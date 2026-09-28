@@ -1,0 +1,5 @@
+dependencies:
+  espressif/mqtt:
+    version: "1.0.0"
+  johboh/nlohmann-json:
+    version: "3.12.0"

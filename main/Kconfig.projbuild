@@ -1,0 +1,55 @@
+menu "Gateway MQTT publishing"
+
+config GATEWAY_MOCK_ENABLED
+    bool "Publish mock readings instead of using BLE"
+    default y
+
+config GATEWAY_WIFI_SSID
+    string "Wi-Fi SSID"
+    default ""
+
+config GATEWAY_WIFI_PASSWORD
+    string "Wi-Fi password"
+    default ""
+
+config GATEWAY_MQTT_URI
+    string "Existing MQTT broker URI"
+    default "mqtts://mqtt.saxedesign.se:8883"
+    help
+        Match the hostname and port of your existing Mosquitto listener.
+        For mqtts://, certificate verification uses certs/mqtt_ca.pem.
+
+config GATEWAY_MQTT_USERNAME
+    string "MQTT username"
+    default ""
+
+config GATEWAY_MQTT_PASSWORD
+    string "MQTT password"
+    default ""
+
+config GATEWAY_MQTT_TOPIC
+    string "MQTT publish topic"
+    default "gateway/mock/readings"
+
+config GATEWAY_DEVICE_ID
+    string "Device ID"
+    default "ring-01"
+
+config GATEWAY_GATEWAY_ID
+    string "Gateway ID / MQTT client ID"
+    default "gateway-01"
+
+config GATEWAY_USER_ID
+    string "Mock user ID"
+    default "user-01"
+
+config GATEWAY_MOCK_READING
+    int "Mock integer reading"
+    default 42
+
+config GATEWAY_MOCK_INTERVAL_SECONDS
+    int "Publish interval in seconds"
+    range 1 3600
+    default 10
+
+endmenu

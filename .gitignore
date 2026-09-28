@@ -3,7 +3,10 @@
 /build-*/
 /sdkconfig
 /sdkconfig.old
+/sdkconfig.mock
+/sdkconfig.mock.old
 /managed_components/
+/main/certs/mqtt_ca.pem
 
 # Local VS Code and ESP-IDF extension settings
 /.vscode/

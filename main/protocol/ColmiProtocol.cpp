@@ -8,7 +8,9 @@ esp_err_t ColmiProtocol::encode_command(const uint8_t*, size_t, uint8_t*, size_t
     return ESP_ERR_NOT_SUPPORTED;
 }
 
-esp_err_t ColmiProtocol::decode_notification(const uint8_t*, size_t) {
+esp_err_t ColmiProtocol::decode_notification(const uint8_t*, size_t,
+                                            DecodedColmiPacket& packet) {
+    packet = {};
     return ESP_ERR_NOT_SUPPORTED;
 }
 

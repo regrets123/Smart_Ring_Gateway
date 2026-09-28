@@ -2,8 +2,16 @@
 
 ESP-IDF C++ project skeleton for an ESP32-C3 Super Mini gateway and a COLMI R09 ring.
 The intended path is BLE GATT client → COLMI packet handling → validated readings →
-JSON → MQTT over TLS. This repository currently contains interfaces and stubs only;
-it does not scan for a ring, decode packets, connect to Wi-Fi, or publish data yet.
+JSON → MQTT over TLS.
+
+This repository is the ESP32 gateway only. It publishes to the existing Mosquitto
+server; webhook routing is handled by that infrastructure. A future Raspberry Pi
+MQTT subscriber and SQLite backend will
+live in a separate repository.
+
+See [the gateway architecture](docs/architecture.md) and
+[MQTT publishing setup](docs/mqtt-publishing.md). Start with the one owned ring;
+keep device identities and protocol handling extensible for future devices/users.
 
 ## Protocol references
 
@@ -22,15 +30,25 @@ be checked against both sources and, eventually, real R09 captures.
 | --- | --- |
 | `main/ble` | Discover and connect to the ring, write GATT commands, receive notifications |
 | `main/protocol/ColmiProtocol.*` | Encode and decode normal command packets |
-| `main/protocol/BigDataReassembler.*` | Collect fragmented history transfers |
 | `main/protocol/RingParsers.*` | Parse heart rate, SpO2, sleep, and steps |
-| `main/models` | Validated reading types; fields are still to be defined |
-| `main/network` | Wi-Fi and MQTT publishing; TLS policy is still to be defined |
+| `main/models/RingData.h` | Real reading types; fields are still to be defined |
+| `main/models/MockData.h` | Temporary publishing-test reading and IDs |
+| `main/serialization/RingJson.*` | Convert decoded readings to JSON; upload format is still to be defined |
+| `main/network` | Wi-Fi and MQTT publishing with clock synchronization and CA verification |
+| `main/certs` | Public MQTT CA certificate embedded in the firmware |
+| `tests` | Host-only checks for the gateway JSON serializer |
 
-All unimplemented operations return `ESP_ERR_NOT_SUPPORTED`. `app_main` only prints
-a startup message so this skeleton can be built without pretending that a sync works.
+The mock publisher sends `deviceId`, `gatewayId`, `userId`, and one integer
+`reading` to `gateway/mock/readings` (QoS 1, not retained). Configure Wi-Fi, your
+existing broker, credentials, and topic in menuconfig. Real BLE parsing and
+serialization remain stubs returning `ESP_ERR_NOT_SUPPORTED`; the real upload
+format is still undecided.
 
 ## Build
+
+`main/idf_component.yml` pins the managed `nlohmann/json` dependency to 3.12.0.
+ESP-IDF downloads it and the pinned ESP-MQTT dependency during configuration.
+The JSON serialization layer currently implements only the mock payload.
 
 From an ESP-IDF terminal:
 
