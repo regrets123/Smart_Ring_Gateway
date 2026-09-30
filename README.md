@@ -57,5 +57,5 @@ idf.py set-target esp32c3
 idf.py build
 ```
 
-The ESP32-C3 Super Mini board's flash size, pin wiring, ring discovery rules,
-credential handling, and broker settings need to be confirmed before deployment.
+The connected ESP32-C3 Super Mini reports 4 MB of flash. Pin wiring, ring discovery
+rules, credential handling, and broker settings need to be confirmed before deployment.

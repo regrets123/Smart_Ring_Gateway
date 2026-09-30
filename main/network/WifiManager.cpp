@@ -20,6 +20,8 @@ void WifiManager::on_event(void* arg, esp_event_base_t base, int32_t id, void* d
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
         esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        const auto* event = static_cast<const wifi_event_sta_disconnected_t*>(data);
+        ESP_LOGW(kTag, "Wi-Fi disconnected, reason=%u", static_cast<unsigned>(event->reason));
         xEventGroupClearBits(self.events_, kConnected);
         if (self.retries_++ < 5) esp_wifi_connect();
         else xEventGroupSetBits(self.events_, kFailed);
