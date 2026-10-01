@@ -4,6 +4,10 @@
 #include "ble/RingPeerMatch.h"
 #include "protocol/BigDataProtocol.h"
 #include "protocol/ColmiProtocol.h"
+#include "probe/RingProbe.h"
+
+#include <deque>
+#include <vector>
 
 namespace {
 
@@ -119,11 +123,112 @@ int test_peer_selection() {
     return 0;
 }
 
+struct FakeTransport : gateway::IRingTransport {
+    bool connected = true;
+    bool big_data = true;
+    uint32_t lost = 2;
+    std::vector<std::vector<uint8_t>> writes;
+    std::deque<gateway::RingNotification> pending;
+    bool disconnect_on_live = false;
+    bool queue_responses = true;
+
+    bool has_channel(gateway::RingChannel c) const override {
+        return connected && (c == gateway::RingChannel::command || big_data);
+    }
+    esp_err_t write(gateway::RingChannel c, const uint8_t* p, size_t n) override {
+        writes.emplace_back(p, p + n);
+        if (!queue_responses) return ESP_OK;
+        auto enqueue = [&](gateway::RingChannel channel, const uint8_t* b, size_t len) {
+            gateway::RingNotification note;
+            note.channel = channel;
+            note.length = len;
+            std::memcpy(note.bytes, b, len);
+            pending.push_back(note);
+        };
+        if (c == gateway::RingChannel::big_data) {
+            const uint8_t header[] = {0xbc, p[1], 3, 0, 0xff, 0xff};
+            const uint8_t tail[] = {1, 2, 3};
+            enqueue(c, header, 1);
+            enqueue(c, header + 1, sizeof(header) - 1);
+            enqueue(c, tail, sizeof(tail));
+        } else if (p[0] != 0x6a) {
+            uint8_t unrelated[16]{};
+            gateway::ColmiProtocol::battery(unrelated);
+            if (p[0] == 0x16) enqueue(c, unrelated, 16);
+            uint8_t packet[16]{};
+            if (p[0] == 0x39 && p[1] == 0) {
+                const uint8_t header_payload[] = {0, 2};
+                gateway::ColmiProtocol::make_command(p[0], header_payload, 2, packet);
+            } else {
+                gateway::ColmiProtocol::make_command(p[0], p + 1, 1, packet);
+            }
+            enqueue(c, packet, 16);
+            if (p[0] == 0x43 || p[0] == 0x15) enqueue(c, packet, 16);
+            if (p[0] == 0x69 && disconnect_on_live) connected = false;
+        }
+        return ESP_OK;
+    }
+    esp_err_t receive(gateway::RingNotification& n, uint32_t) override {
+        if (!connected) return ESP_ERR_INVALID_STATE;
+        if (pending.empty()) return ESP_ERR_TIMEOUT;
+        n = pending.front(); pending.pop_front(); return ESP_OK;
+    }
+    esp_err_t read_device_info(uint16_t, uint8_t* out, size_t, size_t& n) override {
+        out[0] = 'X'; n = 1; return ESP_OK;
+    }
+    uint32_t lost_notifications() const override { return lost; }
+    bool is_connected() const override { return connected; }
+    esp_err_t disconnect() override { connected = false; return ESP_OK; }
+};
+
+struct FakeObserver : gateway::ProbeObserver {
+    int tx_count = 0, rx_count = 0, unmatched = 0, info_count = 0, results = 0;
+    void tx(const char*, gateway::RingChannel, const uint8_t*, size_t) override { ++tx_count; }
+    void rx(const char*, const gateway::RingNotification&, bool matched,
+            gateway::PacketStatus) override { ++rx_count; if (!matched) ++unmatched; }
+    void device_info(uint16_t, esp_err_t, const uint8_t*, size_t) override { ++info_count; }
+    void result(const gateway::ProbeEntry&) override { ++results; }
+    void finished(const gateway::ProbeSummary&) override {}
+};
+
+int test_session() {
+    FakeTransport transport;
+    FakeObserver observer;
+    gateway::RingProbe probe;
+    const auto summary = probe.run(transport, 0x69000000, true, observer);
+    if (summary.entries[0].result != gateway::ProbeResult::response ||
+        summary.entries[3].packets != 2 || observer.unmatched < 1) return 40;
+    if (summary.entries[8].result != gateway::ProbeResult::response ||
+        summary.entries[8].bytes != 9 || summary.lost_notifications != 2 ||
+        summary.entries[7].packets != 3) return 41;
+    if (observer.info_count != 5 || observer.results != 12) return 42;
+    if (transport.writes.size() < 12) return 43;
+
+    FakeTransport missing;
+    missing.big_data = false;
+    missing.queue_responses = false;
+    FakeObserver second;
+    const auto partial = probe.run(missing, 0, false, second);
+    if (partial.entries[5].result != gateway::ProbeResult::skipped_no_date ||
+        partial.entries[8].result != gateway::ProbeResult::unsupported_channel ||
+        partial.entries[9].result != gateway::ProbeResult::unsupported_channel ||
+        partial.entries[0].result != gateway::ProbeResult::timeout) return 44;
+
+    FakeTransport drop;
+    drop.disconnect_on_live = true;
+    FakeObserver third;
+    const auto lost = probe.run(drop, 0, false, third);
+    if (lost.entries[10].result != gateway::ProbeResult::skipped_disconnected ||
+        lost.entries[11].result != gateway::ProbeResult::skipped_disconnected) return 45;
+    return 0;
+}
+
 }  // namespace
 
 int main() {
     if (const int result = test_command_packets()) return result;
     if (const int result = test_command_validation()) return result;
     if (const int result = test_big_data()) return result;
-    return test_peer_selection();
+    if (const int result = test_peer_selection()) return result;
+    return test_session();
 }

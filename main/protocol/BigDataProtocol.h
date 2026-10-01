@@ -19,6 +19,7 @@ public:
     BigDataStatus push(const uint8_t* bytes, size_t length);
     size_t declared_length() const { return declared_length_; }
     size_t bytes_seen() const { return bytes_seen_; }
+    uint8_t data_id() const { return header_[1]; }
 
 private:
     uint8_t header_[6]{};

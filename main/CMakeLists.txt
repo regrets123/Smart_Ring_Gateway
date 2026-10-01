@@ -5,6 +5,7 @@ idf_component_register(
         "ble/RingPeerMatch.cpp"
         "protocol/ColmiProtocol.cpp"
         "protocol/BigDataProtocol.cpp"
+        "probe/RingProbe.cpp"
         "protocol/RingParsers.cpp"
         "serialization/RingJson.cpp"
         "network/WifiManager.cpp"

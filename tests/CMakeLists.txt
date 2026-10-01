@@ -22,7 +22,7 @@ add_test(NAME gateway_serializer COMMAND serializer_test)
 
 add_executable(protocol_probe_test protocol_probe.cpp
     ../main/protocol/ColmiProtocol.cpp ../main/protocol/BigDataProtocol.cpp
-    ../main/ble/RingPeerMatch.cpp)
+    ../main/ble/RingPeerMatch.cpp ../main/probe/RingProbe.cpp)
 target_include_directories(protocol_probe_test PRIVATE compat ../main)
 if(MSVC)
     target_compile_options(protocol_probe_test PRIVATE /W4)
