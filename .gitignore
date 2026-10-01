@@ -1,6 +1,8 @@
 # ESP-IDF build output and generated local configuration
 /build/
 /build-*/
+/.worktrees/
+/.superpowers/
 /sdkconfig
 /sdkconfig.old
 /sdkconfig.mock
