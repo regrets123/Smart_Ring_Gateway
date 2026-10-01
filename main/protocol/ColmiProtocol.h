@@ -7,18 +7,21 @@
 
 namespace gateway {
 
-// Output placeholder. Packet fields will follow actual BLE captures.
-struct DecodedColmiPacket {};
+enum class PacketStatus { valid, wrong_length, bad_checksum };
 
-// Normal command/notification path; packet format is intentionally undecided.
 class ColmiProtocol {
 public:
-    esp_err_t encode_command(const uint8_t* input, size_t input_length,
-                             uint8_t* output, size_t output_capacity,
-                             size_t& output_length);
-    // Only ESP_OK permits consuming the output. The current stub resets it.
-    esp_err_t decode_notification(const uint8_t* bytes, size_t length,
-                                  DecodedColmiPacket& packet);
+    static esp_err_t make_command(uint8_t command, const uint8_t* payload,
+                                  size_t payload_length, uint8_t (&out)[16]);
+    static PacketStatus validate_notification(const uint8_t* bytes, size_t length);
+    static esp_err_t battery(uint8_t (&out)[16]);
+    static esp_err_t hr_settings(uint8_t (&out)[16]);
+    static esp_err_t steps(uint8_t day_offset, uint8_t (&out)[16]);
+    static esp_err_t hr_history(uint32_t midnight_epoch, uint8_t (&out)[16]);
+    static esp_err_t hrv_page(uint8_t page_index, uint8_t (&out)[16]);
+    static esp_err_t live_start(uint8_t kind, uint8_t (&out)[16]);
+    static esp_err_t live_continue(uint8_t kind, uint8_t (&out)[16]);
+    static esp_err_t live_stop(uint8_t kind, uint8_t (&out)[16]);
 };
 
 }  // namespace gateway
