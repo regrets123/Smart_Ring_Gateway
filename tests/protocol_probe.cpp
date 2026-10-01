@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <cstring>
 
+#include "ble/RingPeerMatch.h"
 #include "protocol/BigDataProtocol.h"
 #include "protocol/ColmiProtocol.h"
 
@@ -98,10 +99,31 @@ int test_big_data() {
     return 0;
 }
 
+int test_peer_selection() {
+    const uint8_t complete_name[] = {11, 0x09, 'M', '7', '0', '8', '3', '_', '7', '9', '0', '4'};
+    const uint8_t short_name[] = {6, 0x08, 'M', '7', '0', '8', '3'};
+    const uint8_t other_name[] = {11, 0x09, 'M', '7', '0', '8', '3', '_', '0', '0', '0', '0'};
+    const uint8_t address_le[] = {0x04, 0x79, 0x31, 0x45, 0x35, 0x31};
+    if (!gateway::RingPeerMatch::matches(complete_name, sizeof(complete_name),
+                                         "M7083_7904", "", address_le)) return 30;
+    if (gateway::RingPeerMatch::matches(short_name, sizeof(short_name),
+                                        "M7083_7904", "", address_le)) return 31;
+    if (gateway::RingPeerMatch::matches(other_name, sizeof(other_name),
+                                        "M7083_7904", "", address_le)) return 32;
+    if (!gateway::RingPeerMatch::matches(complete_name, sizeof(complete_name),
+                                         "M7083_7904", "31:35:45:31:79:04", address_le)) return 33;
+    if (gateway::RingPeerMatch::matches(complete_name, sizeof(complete_name),
+                                        "M7083_7904", "31:35:45:31:79:05", address_le)) return 34;
+    if (gateway::RingPeerMatch::matches(complete_name, sizeof(complete_name),
+                                        "M7083_7904", "invalid", address_le)) return 35;
+    return 0;
+}
+
 }  // namespace
 
 int main() {
     if (const int result = test_command_packets()) return result;
     if (const int result = test_command_validation()) return result;
-    return test_big_data();
+    if (const int result = test_big_data()) return result;
+    return test_peer_selection();
 }
