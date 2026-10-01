@@ -52,7 +52,9 @@ ProbeEntry command(IRingTransport& transport, ProbeObserver& observer, const cha
     uint32_t quiet = 0;
     bool got_valid = false;
     bool got_malformed = false;
+    bool got_no_data = false;
     bool sent_continue = false;
+    uint8_t hr_packets = 0;
     const uint32_t limit = live ? kLiveMs : kCommandHardMs;
     while (waited < limit && elapsed(start) < limit) {
         if (!transport.is_connected()) {
@@ -87,7 +89,8 @@ ProbeEntry command(IRingTransport& transport, ProbeObserver& observer, const cha
         }
         const bool same = note.channel == RingChannel::command && note.length > 0 &&
                           note.bytes[0] == command_id &&
-                          (command_id != 0x39 || (note.length > 1 && note.bytes[1] == request[1]));
+                          (command_id != 0x39 || (note.length > 1 &&
+                           (note.bytes[1] == request[1] || note.bytes[1] == 0xff)));
         const auto check = ColmiProtocol::validate_notification(note.bytes, note.length);
         note_rx(observer, label, note, same);
         if (!same) continue;
@@ -97,6 +100,16 @@ ProbeEntry command(IRingTransport& transport, ProbeObserver& observer, const cha
             ++entry.packets;
             entry.bytes += note.length;
             got_valid = true;
+            if (!live && note.bytes[1] == 0xff &&
+                (command_id == 0x43 || command_id == 0x15 || command_id == 0x39)) {
+                got_no_data = true;
+                break;
+            }
+            if (command_id == 0x15 && note.bytes[1] == 0) hr_packets = note.bytes[2];
+            if (multi && command_id == 0x43 && note.bytes[1] != 0xf0 &&
+                note.bytes[6] > 0 && note.bytes[5] == note.bytes[6] - 1) break;
+            if (multi && command_id == 0x15 && hr_packets > 0 &&
+                note.bytes[1] == hr_packets - 1) break;
             if (!multi && !live) break;
         } else {
             got_malformed = true;
@@ -110,7 +123,8 @@ ProbeEntry command(IRingTransport& transport, ProbeObserver& observer, const cha
             entry.result = ProbeResult::transport_error;
     }
     if (entry.result == ProbeResult::response)
-        entry.result = got_valid ? ProbeResult::response
+        entry.result = got_no_data ? ProbeResult::no_data
+                     : got_valid ? ProbeResult::response
                      : got_malformed ? ProbeResult::malformed : ProbeResult::timeout;
     entry.elapsed_ms = elapsed(start);
     return entry;

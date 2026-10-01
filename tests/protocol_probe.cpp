@@ -5,6 +5,7 @@
 #include "protocol/BigDataProtocol.h"
 #include "protocol/ColmiProtocol.h"
 #include "probe/RingProbe.h"
+#include "probe/ProbeDate.h"
 
 #include <deque>
 #include <vector>
@@ -131,6 +132,9 @@ struct FakeTransport : gateway::IRingTransport {
     std::deque<gateway::RingNotification> pending;
     bool disconnect_on_live = false;
     bool queue_responses = true;
+    bool no_data = false;
+    bool bad_battery_checksum = false;
+    bool malformed_big_data = false;
 
     bool has_channel(gateway::RingChannel c) const override {
         return connected && (c == gateway::RingChannel::command || big_data);
@@ -146,7 +150,10 @@ struct FakeTransport : gateway::IRingTransport {
             pending.push_back(note);
         };
         if (c == gateway::RingChannel::big_data) {
-            const uint8_t header[] = {0xbc, p[1], 3, 0, 0xff, 0xff};
+            const uint8_t header[] = {0xbc, p[1],
+                                      static_cast<uint8_t>(malformed_big_data ? 1 : 3),
+                                      static_cast<uint8_t>(malformed_big_data ? 0x80 : 0),
+                                      0xff, 0xff};
             const uint8_t tail[] = {1, 2, 3};
             enqueue(c, header, 1);
             enqueue(c, header + 1, sizeof(header) - 1);
@@ -156,12 +163,16 @@ struct FakeTransport : gateway::IRingTransport {
             gateway::ColmiProtocol::battery(unrelated);
             if (p[0] == 0x16) enqueue(c, unrelated, 16);
             uint8_t packet[16]{};
-            if (p[0] == 0x39 && p[1] == 0) {
+            if (no_data && (p[0] == 0x43 || p[0] == 0x15 || p[0] == 0x39)) {
+                const uint8_t marker[] = {0xff};
+                gateway::ColmiProtocol::make_command(p[0], marker, 1, packet);
+            } else if (p[0] == 0x39 && p[1] == 0) {
                 const uint8_t header_payload[] = {0, 2};
                 gateway::ColmiProtocol::make_command(p[0], header_payload, 2, packet);
             } else {
                 gateway::ColmiProtocol::make_command(p[0], p + 1, 1, packet);
             }
+            if (p[0] == 0x03 && bad_battery_checksum) packet[15] ^= 1;
             enqueue(c, packet, 16);
             if (p[0] == 0x43 || p[0] == 0x15) enqueue(c, packet, 16);
             if (p[0] == 0x69 && disconnect_on_live) connected = false;
@@ -220,6 +231,32 @@ int test_session() {
     const auto lost = probe.run(drop, 0, false, third);
     if (lost.entries[10].result != gateway::ProbeResult::skipped_disconnected ||
         lost.entries[11].result != gateway::ProbeResult::skipped_disconnected) return 45;
+    FakeTransport empty;
+    empty.no_data = true;
+    FakeObserver fourth;
+    const auto none = probe.run(empty, 0x69000000, true, fourth);
+    if (none.entries[3].result != gateway::ProbeResult::no_data ||
+        none.entries[5].result != gateway::ProbeResult::no_data ||
+        none.entries[7].result != gateway::ProbeResult::no_data) return 46;
+    FakeTransport malformed;
+    malformed.bad_battery_checksum = true;
+    malformed.malformed_big_data = true;
+    FakeObserver fifth;
+    const auto bad = probe.run(malformed, 0, false, fifth);
+    if (bad.entries[0].result != gateway::ProbeResult::malformed ||
+        bad.entries[8].result != gateway::ProbeResult::malformed) return 47;
+    return 0;
+}
+
+int test_date() {
+    uint32_t midnight = 0;
+    if (gateway::ProbeDate::resolve("2024-02-29", 0, false, midnight) != ESP_OK ||
+        midnight != 1709164800u) return 50;
+    if (gateway::ProbeDate::resolve("2023-02-29", 0, false, midnight) != ESP_ERR_INVALID_ARG) return 51;
+    if (gateway::ProbeDate::resolve("2024-13-01", 0, false, midnight) != ESP_ERR_INVALID_ARG) return 52;
+    if (gateway::ProbeDate::resolve("", 0, false, midnight) != ESP_ERR_NOT_FOUND) return 53;
+    if (gateway::ProbeDate::resolve("", 1709251199u, true, midnight) != ESP_OK ||
+        midnight != 1709164800u) return 54;
     return 0;
 }
 
@@ -230,5 +267,6 @@ int main() {
     if (const int result = test_command_validation()) return result;
     if (const int result = test_big_data()) return result;
     if (const int result = test_peer_selection()) return result;
-    return test_session();
+    if (const int result = test_session()) return result;
+    return test_date();
 }

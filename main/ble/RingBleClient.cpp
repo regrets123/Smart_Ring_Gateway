@@ -5,6 +5,7 @@
 
 #include "ble/RingPeerMatch.h"
 #include "esp_log.h"
+#include "host/ble_att.h"
 #include "host/ble_hs.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
@@ -56,7 +57,9 @@ int RingBleClient::on_gap(ble_gap_event* event, void* arg) {
         if (!RingPeerMatch::matches(disc.data, disc.length_data, self.exact_name_,
                                     self.optional_address_, disc.addr.val)) break;
         self.connecting_ = true;
-        ESP_LOGI(kTag, "Matched %s RSSI=%d", self.exact_name_, disc.rssi);
+        ESP_LOGI(kTag, "Matched %s addr=%02x:%02x:%02x:%02x:%02x:%02x RSSI=%d",
+                 self.exact_name_, disc.addr.val[5], disc.addr.val[4], disc.addr.val[3],
+                 disc.addr.val[2], disc.addr.val[1], disc.addr.val[0], disc.rssi);
         ble_gap_disc_cancel();
         uint8_t own_addr_type = 0;
         int rc = ble_hs_id_infer_auto(0, &own_addr_type);
@@ -278,7 +281,7 @@ esp_err_t RingBleClient::open(const char* exact_name, const char* optional_addre
     if (rc != 0) return ESP_FAIL;
     bits = xEventGroupWaitBits(events_, kConnected | kFailed, pdTRUE, pdFALSE,
                                pdMS_TO_TICKS(timeout_ms + 20000));
-    if (!(bits & kConnected)) return ESP_ERR_TIMEOUT;
+    if (!(bits & kConnected)) return (bits & kFailed) ? ESP_FAIL : ESP_ERR_TIMEOUT;
     return discover();
 }
 
@@ -345,6 +348,8 @@ esp_err_t RingBleClient::read_device_info(uint16_t characteristic_uuid, uint8_t*
                                         device_info_end_, &uuid.u, on_attribute, this),
                                        kGattTimeoutMs);
     reading_ = false;
+    if (procedure_status_ == BLE_HS_ATT_ERR(BLE_ATT_ERR_ATTR_NOT_FOUND))
+        return ESP_ERR_NOT_FOUND;
     if (result != ESP_OK || !read_length_) return result == ESP_OK ? ESP_ERR_NOT_FOUND : result;
     if (read_length_ > capacity) return ESP_ERR_INVALID_SIZE;
     std::memcpy(out, read_buffer_, read_length_);

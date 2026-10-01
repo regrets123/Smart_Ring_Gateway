@@ -6,6 +6,7 @@ idf_component_register(
         "protocol/ColmiProtocol.cpp"
         "protocol/BigDataProtocol.cpp"
         "probe/RingProbe.cpp"
+        "probe/ProbeDate.cpp"
         "protocol/RingParsers.cpp"
         "serialization/RingJson.cpp"
         "network/WifiManager.cpp"

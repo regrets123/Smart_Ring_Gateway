@@ -1,8 +1,31 @@
-menu "Gateway MQTT publishing"
+menu "Smart Ring Gateway"
+
+choice GATEWAY_MODE
+    prompt "Run mode"
+    default GATEWAY_MOCK_ENABLED
 
 config GATEWAY_MOCK_ENABLED
-    bool "Publish mock readings instead of using BLE"
-    default y
+    bool "Publish mock readings over MQTT"
+
+config GATEWAY_BLE_PROBE_ENABLED
+    bool "Run one M7083 BLE diagnostic session"
+
+endchoice
+
+config GATEWAY_PROBE_NAME
+    string "Exact ring advertised name"
+    depends on GATEWAY_BLE_PROBE_ENABLED
+    default "M7083_7904"
+
+config GATEWAY_PROBE_ADDRESS
+    string "Optional exact BLE address (AA:BB:CC:DD:EE:FF)"
+    depends on GATEWAY_BLE_PROBE_ENABLED
+    default ""
+
+config GATEWAY_PROBE_DATE
+    string "Optional UTC probe date (YYYY-MM-DD)"
+    depends on GATEWAY_BLE_PROBE_ENABLED
+    default ""
 
 config GATEWAY_WIFI_SSID
     string "Wi-Fi SSID"

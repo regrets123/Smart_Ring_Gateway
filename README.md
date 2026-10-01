@@ -13,6 +13,11 @@ See [the gateway architecture](docs/architecture.md) and
 [MQTT publishing setup](docs/mqtt-publishing.md). Start with the one owned ring;
 keep device identities and protocol handling extensible for future devices/users.
 
+The [M7083 raw BLE probe](docs/m7083-probe.md) provides a selectable ESP32-C3
+diagnostic mode for the QRing-compatible HAVIT ring verified by a Python
+battery request. It prints raw command and Big Data responses plus a complete
+per-query summary before health-data decoding or JSON work.
+
 ## Protocol references
 
 - [patmorli/colmi-r09-smart-ring](https://github.com/patmorli/colmi-r09-smart-ring):

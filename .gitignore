@@ -7,6 +7,8 @@
 /sdkconfig.old
 /sdkconfig.mock
 /sdkconfig.mock.old
+/sdkconfig.probe
+/sdkconfig.probe.old
 /managed_components/
 /main/certs/mqtt_ca.pem
 
