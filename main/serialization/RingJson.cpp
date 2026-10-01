@@ -17,14 +17,19 @@ bool valid_id(const std::string& id) {
 
 esp_err_t RingJson::serialize(const MockReading& reading, std::string& json) {
     json.clear();
-    if (!valid_id(reading.device_id) || !valid_id(reading.gateway_id) ||
-        !valid_id(reading.user_id)) return ESP_ERR_INVALID_ARG;
+    if (!valid_id(reading.record_id) || !valid_id(reading.device_id) ||
+        !valid_id(reading.gateway_id) || !valid_id(reading.user_id) ||
+        reading.observed_at.empty()) return ESP_ERR_INVALID_ARG;
 
     const nlohmann::json payload = {
+        {"schemaVersion", 1},
+        {"recordId", reading.record_id},
         {"deviceId", reading.device_id},
         {"gatewayId", reading.gateway_id},
         {"userId", reading.user_id},
-        {"reading", reading.reading},
+        {"kind", "heartRate"},
+        {"observedAt", reading.observed_at},
+        {"data", {{"bpm", reading.bpm}}},
     };
     json = payload.dump();
     return ESP_OK;

@@ -43,9 +43,9 @@ config GATEWAY_USER_ID
     string "Mock user ID"
     default "user-01"
 
-config GATEWAY_MOCK_READING
-    int "Mock integer reading"
-    default 42
+config GATEWAY_MOCK_BPM
+    int "Mock heart rate (bpm)"
+    default 72
 
 config GATEWAY_MOCK_INTERVAL_SECONDS
     int "Publish interval in seconds"

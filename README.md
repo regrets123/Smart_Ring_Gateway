@@ -38,8 +38,8 @@ be checked against both sources and, eventually, real R09 captures.
 | `main/certs` | Public MQTT CA certificate embedded in the firmware |
 | `tests` | Host-only checks for the gateway JSON serializer |
 
-The mock publisher sends `deviceId`, `gatewayId`, `userId`, and one integer
-`reading` to `gateway/mock/readings` (QoS 1, not retained). Configure Wi-Fi, your
+The mock publisher sends a version 1 `heartRate` record with `data.bpm` to
+`gateway/mock/readings` (QoS 1, not retained). Configure Wi-Fi, your
 existing broker, credentials, and topic in menuconfig. Real BLE parsing and
 serialization remain stubs returning `ESP_ERR_NOT_SUPPORTED`; the real upload
 format is still undecided.

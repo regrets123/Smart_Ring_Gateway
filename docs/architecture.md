@@ -38,8 +38,8 @@ flowchart LR
 
 For now, the source is `MockReading`, bypassing BLE and the ring parsers. The
 mock type lives in `main/models/MockData.h`; real reading placeholders stay in
-`main/models/RingData.h`. The publisher sends the three IDs and one integer
-`reading`. Configure the existing
+`main/models/RingData.h`. The publisher sends a version 1 heart-rate record with
+`recordId`, `observedAt`, and `data.bpm`. Configure the existing
 infrastructure to receive it using [the MQTT publishing instructions](mqtt-publishing.md).
 
 ## Firmware responsibilities
@@ -49,7 +49,7 @@ infrastructure to receive it using [the MQTT publishing instructions](mqtt-publi
 | `main/main.cpp` | Configure and connect the gateway, then publish the mock reading periodically |
 | `main/ble` | Discover/connect to the ring, write GATT commands, receive notifications |
 | `main/protocol` | Check/decode packets and produce reading types |
-| `main/models` | Decoded data and identity values; current mock has one integer |
+| `main/models` | Decoded data and identity values; current mock has a heart-rate value |
 | `main/serialization` | Convert data into JSON using `nlohmann/json` |
 | `main/network` | Connect to Wi-Fi and publish to the configured MQTT broker |
 
@@ -70,8 +70,8 @@ Compare the protocol references in the README with captures from the actual R09.
 Confirm supported readings, notification/history layouts, fragmentation, timestamp
 semantics, history retention, and how to recognize the registered ring reliably.
 
-The real JSON contract waits until this data is understood. The mock's `deviceId`,
-`gatewayId`, `userId`, and integer `reading` are a temporary publishing test.
+The real JSON contract waits until this data is understood. The mock heart-rate
+record is a temporary publishing test.
 Measurement fields, record shapes, batching, and duplicate identity remain undecided.
 Future backend ownership checks belong to the separate subscriber project.
 

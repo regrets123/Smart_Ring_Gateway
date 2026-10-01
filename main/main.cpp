@@ -22,10 +22,12 @@ extern "C" void app_main(void) {
     static gateway::WifiManager wifi;
     static gateway::MqttPublisher mqtt;
     gateway::RingJson serializer;
-    const gateway::MockReading mock{CONFIG_GATEWAY_DEVICE_ID,
+    const gateway::MockReading mock{"example-stable-record-id-001",
+                                   CONFIG_GATEWAY_DEVICE_ID,
                                    CONFIG_GATEWAY_GATEWAY_ID,
                                    CONFIG_GATEWAY_USER_ID,
-                                   CONFIG_GATEWAY_MOCK_READING};
+                                   "2026-10-01T12:00:00Z",
+                                   CONFIG_GATEWAY_MOCK_BPM};
     std::string payload;
     ESP_ERROR_CHECK(serializer.serialize(mock, payload));
     ESP_LOGI(tag, "Mock source -> JSON: %s", payload.c_str());
