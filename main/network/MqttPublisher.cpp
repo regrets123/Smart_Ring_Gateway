@@ -106,6 +106,7 @@ esp_err_t MqttPublisher::publish(const char* topic, const char* json) {
         return ESP_FAIL;
     }
     ESP_LOGI(kTag, "Submitted message %d", id);
+    ESP_LOGI(kTag, "topic is: %s", topic);
     return ESP_OK;
 }
 
