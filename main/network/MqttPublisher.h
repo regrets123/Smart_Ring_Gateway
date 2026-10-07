@@ -8,7 +8,7 @@
 
 namespace gateway {
 
-// Publishes JSON text; the temporary mock schema is separate from real readings.
+// Publishes JSON text.
 class MqttPublisher {
 public:
     esp_err_t connect();

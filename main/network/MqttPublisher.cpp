@@ -105,7 +105,7 @@ esp_err_t MqttPublisher::publish(const char* topic, const char* json) {
     if (id < 0) {
         return ESP_FAIL;
     }
-    ESP_LOGI(kTag, "Submitted mock message %d", id);
+    ESP_LOGI(kTag, "Submitted message %d", id);
     return ESP_OK;
 }
 

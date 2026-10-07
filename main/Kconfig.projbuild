@@ -1,35 +1,19 @@
 menu "Smart Ring Gateway"
 
-choice GATEWAY_MODE
-    prompt "Run mode"
-    default GATEWAY_MOCK_ENABLED
-
-config GATEWAY_MOCK_ENABLED
-    bool "Publish mock readings over MQTT"
-
-config GATEWAY_BLE_PROBE_ENABLED
-    bool "Run one M7083 BLE diagnostic session"
-
-endchoice
-
 config GATEWAY_PROBE_NAME
     string "Exact ring advertised name"
-    depends on GATEWAY_BLE_PROBE_ENABLED
     default "M7083_7904"
 
 config GATEWAY_PROBE_ADDRESS
     string "Optional exact BLE address (AA:BB:CC:DD:EE:FF)"
-    depends on GATEWAY_BLE_PROBE_ENABLED
     default ""
 
 config GATEWAY_PROBE_DATE
     string "Optional UTC probe date (YYYY-MM-DD)"
-    depends on GATEWAY_BLE_PROBE_ENABLED
     default ""
 
 config GATEWAY_PROBE_SET_TIME_UTC
     string "One-shot ring clock setting (YYYY-MM-DDTHH:MM:SSZ; leave empty to disable)"
-    depends on GATEWAY_BLE_PROBE_ENABLED
     default ""
 
 config GATEWAY_WIFI_SSID
@@ -57,7 +41,7 @@ config GATEWAY_MQTT_PASSWORD
 
 config GATEWAY_MQTT_TOPIC
     string "MQTT publish topic"
-    default "gateway/mock/readings"
+    default "gateway/readings"
 
 config GATEWAY_DEVICE_ID
     string "Device ID"
@@ -68,16 +52,7 @@ config GATEWAY_GATEWAY_ID
     default "gateway-01"
 
 config GATEWAY_USER_ID
-    string "Mock user ID"
+    string "User ID"
     default "user-01"
-
-config GATEWAY_MOCK_BPM
-    int "Mock heart rate (bpm)"
-    default 72
-
-config GATEWAY_MOCK_INTERVAL_SECONDS
-    int "Publish interval in seconds"
-    range 1 3600
-    default 10
 
 endmenu
