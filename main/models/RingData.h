@@ -12,11 +12,22 @@ struct Spo2Reading {
     int o2Perc;
 };
 
+struct Spo2HistorySample {
+    uint8_t min = 0;
+    uint8_t max = 0;
+};
+
+struct Spo2HistoryRecord {
+    uint8_t unknown = 0;
+    uint8_t days_ago = 0;
+    std::vector<Spo2HistorySample> samples;
+    std::vector<uint8_t> raw_payload;
+};
+
 enum class SleepStage : uint8_t {
     unknown = 0,
     light = 2,
     deep = 3,
-    rem = 4,
     awake = 5,
 };
 

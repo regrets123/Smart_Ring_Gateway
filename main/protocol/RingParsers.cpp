@@ -44,6 +44,33 @@ namespace gateway
         return ESP_OK;
     }
 
+    esp_err_t Spo2HistoryParser::parse(const uint8_t *bytes, size_t length,
+                                       Spo2HistoryRecord &record)
+    {
+        record.unknown = 0;
+        record.days_ago = 0;
+        record.samples.clear();
+        record.raw_payload.clear();
+
+        const esp_err_t status = BigDataProtocol::validate_frame(bytes, length, 0x2a);
+        if (status != ESP_OK) {
+            return status;
+        }
+
+        record.raw_payload.assign(bytes + 6, bytes + length);
+        const auto &payload = record.raw_payload;
+        if (payload.size() < 2 || (payload.size() - 2) % 2 != 0) {
+            return ESP_ERR_INVALID_RESPONSE;
+        }
+
+        record.unknown = payload[0];
+        record.days_ago = payload[1];
+        for (size_t at = 2; at < payload.size(); at += 2) {
+            record.samples.push_back({payload[at], payload[at + 1]});
+        }
+        return record.samples.empty() ? ESP_ERR_NOT_FOUND : ESP_OK;
+    }
+
     esp_err_t SleepParser::parse(const uint8_t *bytes, size_t length, SleepRecord &reading)
     {
         reading.nights.clear();
@@ -95,8 +122,9 @@ namespace gateway
             night.end_min = read_minutes(offset + 2);
             for (size_t at = offset + 4; at < day_end; at += 2) {
                 const uint8_t stage = payload[at];
-                if (stage >= static_cast<uint8_t>(SleepStage::light) &&
-                    stage <= static_cast<uint8_t>(SleepStage::awake)) {
+                if (stage == static_cast<uint8_t>(SleepStage::light) ||
+                    stage == static_cast<uint8_t>(SleepStage::deep) ||
+                    stage == static_cast<uint8_t>(SleepStage::awake)) {
                     night.stages.push_back({static_cast<SleepStage>(stage), payload[at + 1]});
                 }
             }

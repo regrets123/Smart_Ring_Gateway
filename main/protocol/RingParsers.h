@@ -19,6 +19,12 @@ public:
     esp_err_t parse(const uint8_t* bytes, size_t length, Spo2Reading& reading);
 };
 
+class Spo2HistoryParser {
+public:
+    // Expects a complete, reassembled 0x2A Big Data frame.
+    esp_err_t parse(const uint8_t* bytes, size_t length, Spo2HistoryRecord& record);
+};
+
 class SleepParser {
 public:
     // Expects a complete, reassembled 0x27 Big Data frame.
