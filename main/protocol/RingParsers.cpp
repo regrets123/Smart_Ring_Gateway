@@ -2,6 +2,8 @@
 #include "protocol/BigDataProtocol.h"
 #include "protocol/ColmiProtocol.h"
 
+#include <utility>
+
 namespace gateway
 {
     esp_err_t HeartRateParser::parse(const uint8_t *bytes, size_t length, HeartRateReading &reading)
@@ -46,25 +48,64 @@ namespace gateway
     {
         reading.nights.clear();
         reading.raw_payload.clear();
-        if (!bytes)
-        {
-            return ESP_ERR_INVALID_ARG;
+        // The caller must provide the complete frame, not one BLE fragment.
+        const esp_err_t status = BigDataProtocol::validate_frame(bytes, length, 0x27);
+        if (status != ESP_OK) {
+            return status;
         }
 
-        // The caller must provide the complete frame, not one BLE fragment.
-        BigDataLengthTracker frame;
-        if (frame.push(bytes, length) != BigDataStatus::complete || frame.data_id() != 0x27)
-        {
-            return ESP_ERR_INVALID_RESPONSE;
-        }
-        if (frame.declared_length() == 0)
-        {
+        // The first six bytes are the Big Data header.
+        reading.raw_payload.assign(bytes + 6, bytes + length);
+        const auto &payload = reading.raw_payload;
+        const size_t sleep_days = payload[0];
+        if (sleep_days == 0) {
             return ESP_ERR_NOT_FOUND;
         }
 
-        // The first six bytes are the Big Data header; keep the payload uninterpreted.
-        reading.raw_payload.assign(bytes + 6, bytes + length);
-        return ESP_OK;
+        size_t offset = 1;
+        for (size_t day = 0; day < sleep_days; ++day) {
+            if (payload.size() - offset < 2) {
+                reading.nights.clear();
+                return ESP_ERR_INVALID_RESPONSE;
+            }
+
+            const uint8_t days_ago = payload[offset];
+            const size_t day_bytes = payload[offset + 1];
+            offset += 2;
+            if (day_bytes > payload.size() - offset ||
+                (day_bytes != 0 && (day_bytes < 4 || (day_bytes - 4) % 2 != 0))) {
+                reading.nights.clear();
+                return ESP_ERR_INVALID_RESPONSE;
+            }
+            if (day_bytes == 0) {
+                continue;
+            }
+
+            const size_t day_end = offset + day_bytes;
+            const auto read_minutes = [&payload](size_t at) {
+                const uint16_t value = static_cast<uint16_t>(payload[at]) |
+                                       (static_cast<uint16_t>(payload[at + 1]) << 8);
+                return static_cast<int16_t>(value < 0x8000 ? static_cast<int32_t>(value)
+                                                           : static_cast<int32_t>(value) - 0x10000);
+            };
+
+            SleepNight night;
+            night.days_ago = days_ago;
+            night.start_min = read_minutes(offset);
+            night.end_min = read_minutes(offset + 2);
+            for (size_t at = offset + 4; at < day_end; at += 2) {
+                const uint8_t stage = payload[at];
+                if (stage >= static_cast<uint8_t>(SleepStage::light) &&
+                    stage <= static_cast<uint8_t>(SleepStage::awake)) {
+                    night.stages.push_back({static_cast<SleepStage>(stage), payload[at + 1]});
+                }
+            }
+            if (!night.stages.empty()) {
+                reading.nights.push_back(std::move(night));
+            }
+            offset = day_end;
+        }
+        return reading.nights.empty() ? ESP_ERR_NOT_FOUND : ESP_OK;
     }
     esp_err_t StepsParser::parse(const uint8_t *, size_t, StepsReading &)
     {

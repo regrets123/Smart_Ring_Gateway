@@ -10,6 +10,26 @@ esp_err_t BigDataProtocol::make_read(uint8_t data_id, uint8_t (&out)[7]) {
     return ESP_OK;
 }
 
+esp_err_t BigDataProtocol::validate_frame(const uint8_t* bytes, size_t length,
+                                           uint8_t expected_data_id) {
+    if (!bytes) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    BigDataLengthTracker frame;
+    if (frame.push(bytes, length) != BigDataStatus::complete ||
+        frame.data_id() != expected_data_id) {
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+    if (frame.declared_length() == 0) {
+        return ESP_ERR_NOT_FOUND;
+    }
+    // TODO: Once several days of nonempty frames are stored in SQL, confirm
+    // CRC-16/Modbus for header bytes 4-5; allow the 0xFFFF empty-data sentinel.
+    // Then reject frames whose CRC does not match the payload.
+    return ESP_OK;
+}
+
 BigDataStatus BigDataLengthTracker::push(const uint8_t* bytes, size_t length) {
     if (status_ != BigDataStatus::incomplete) {
         return status_;

@@ -12,6 +12,9 @@ enum class BigDataStatus { incomplete, complete, malformed };
 class BigDataProtocol {
 public:
     static esp_err_t make_read(uint8_t data_id, uint8_t (&out)[7]);
+    // Check a complete frame's marker, length, ID, and nonempty payload; CRC is not checked.
+    static esp_err_t validate_frame(const uint8_t* bytes, size_t length,
+                                    uint8_t expected_data_id);
 };
 
 class BigDataLengthTracker {
