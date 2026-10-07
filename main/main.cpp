@@ -234,6 +234,7 @@ class MonitorObserver final : public gateway::ProbeObserver {
 
   private:
     void publish(const char* kind, const std::string& data) {
+        // TODO: After end-to-end validation, use a stable ID and measurement time for each ring reading so resyncs do not create duplicate rows.
         const std::time_t now = std::time(nullptr);
         std::tm utc{};
         if (now < 1577836800 || !gmtime_r(&now, &utc)) {
