@@ -8,6 +8,13 @@ namespace gateway {
 struct HeartRateReading {
     int bpm = 0;
 };
+
+struct HeartRateHistoryRecord {
+    uint32_t utc_time = 0;
+    uint8_t range = 0;
+    // Sample bytes in packet order; trailing padding is retained.
+    std::vector<uint8_t> samples;
+};
 struct Spo2Reading {
     int o2Perc;
 };

@@ -1,5 +1,7 @@
 #include "serialization/RingJson.h"
 
+#include <utility>
+
 #include <nlohmann/json.hpp>
 
 namespace gateway {
@@ -15,14 +17,87 @@ esp_err_t RingJson::serialize(const HeartRateReading& reading, std::string& json
     return ESP_OK;
 }
 
-esp_err_t RingJson::serialize(const Spo2Reading&, std::string& json) {
+esp_err_t RingJson::serialize(const HeartRateHistoryRecord& record, std::string& json) {
     json.clear();
-    return ESP_ERR_NOT_SUPPORTED;
+    if (record.samples.empty()) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const nlohmann::json payload = {{"utc_time", record.utc_time},
+                                    {"range", record.range},
+                                    {"samples", record.samples}};
+    json = payload.dump();
+    return ESP_OK;
 }
 
-esp_err_t RingJson::serialize(const SleepRecord&, std::string& json) {
+esp_err_t RingJson::serialize(const Spo2Reading& reading, std::string& json) {
     json.clear();
-    return ESP_ERR_NOT_SUPPORTED;
+    if (reading.o2Perc <= 0 || reading.o2Perc > 100) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const nlohmann::json payload = {{"o2Perc", reading.o2Perc}};
+    json = payload.dump();
+    return ESP_OK;
+}
+
+esp_err_t RingJson::serialize(const Spo2HistoryRecord& record, std::string& json) {
+    json.clear();
+    if (record.samples.empty()) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nlohmann::json samples = nlohmann::json::array();
+    for (const auto& sample : record.samples) {
+        samples.push_back({{"min", sample.min}, {"max", sample.max}});
+    }
+
+    const nlohmann::json payload = {{"unknown", record.unknown},
+                                    {"days_ago", record.days_ago},
+                                    {"samples", std::move(samples)}};
+    json = payload.dump();
+    return ESP_OK;
+}
+
+esp_err_t RingJson::serialize(const SleepRecord& record, std::string& json) {
+    json.clear();
+    if (record.nights.empty()) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nlohmann::json nights = nlohmann::json::array();
+    for (const auto& night : record.nights) {
+        nlohmann::json stages = nlohmann::json::array();
+        for (const auto& span : night.stages) {
+            const char* name = nullptr;
+            switch (span.stage) {
+            case SleepStage::light:
+                name = "light";
+                break;
+            case SleepStage::deep:
+                name = "deep";
+                break;
+            case SleepStage::awake:
+                name = "awake";
+                break;
+            default:
+                json.clear();
+                return ESP_ERR_INVALID_ARG;
+            }
+            stages.push_back({{"stage", name}, {"duration_min", span.duration_min}});
+        }
+        if (stages.empty()) {
+            json.clear();
+            return ESP_ERR_INVALID_ARG;
+        }
+        nights.push_back({{"days_ago", night.days_ago},
+                          {"start_min", night.start_min},
+                          {"end_min", night.end_min},
+                          {"stages", std::move(stages)}});
+    }
+
+    json = nlohmann::json{{"nights", std::move(nights)}}.dump();
+    return ESP_OK;
 }
 
 esp_err_t RingJson::serialize(const StepsReading&, std::string& json) {

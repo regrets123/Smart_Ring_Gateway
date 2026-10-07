@@ -1,0 +1,82 @@
+[
+  {
+    "schemaVersion": 1,
+    "recordId": "00000000000000000000000000000001",
+    "deviceId": "ring-01",
+    "gatewayId": "gateway-01",
+    "userId": "user-01",
+    "kind": "heartRate",
+    "observedAt": "2026-10-07T12:00:00Z",
+    "data": {
+      "bpm": 72
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "recordId": "00000000000000000000000000000002",
+    "deviceId": "ring-01",
+    "gatewayId": "gateway-01",
+    "userId": "user-01",
+    "kind": "heartRateHistory",
+    "observedAt": "2026-10-07T12:00:01Z",
+    "data": {
+      "utc_time": 1791331200,
+      "range": 5,
+      "samples": [72, 73, 71, 70, 72, 74, 75, 73, 72]
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "recordId": "00000000000000000000000000000003",
+    "deviceId": "ring-01",
+    "gatewayId": "gateway-01",
+    "userId": "user-01",
+    "kind": "spo2",
+    "observedAt": "2026-10-07T12:00:02Z",
+    "data": {
+      "o2Perc": 98
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "recordId": "00000000000000000000000000000004",
+    "deviceId": "ring-01",
+    "gatewayId": "gateway-01",
+    "userId": "user-01",
+    "kind": "spo2History",
+    "observedAt": "2026-10-07T12:00:03Z",
+    "data": {
+      "unknown": 0,
+      "days_ago": 1,
+      "samples": [
+        {
+          "min": 96,
+          "max": 99
+        }
+      ]
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "recordId": "00000000000000000000000000000005",
+    "deviceId": "ring-01",
+    "gatewayId": "gateway-01",
+    "userId": "user-01",
+    "kind": "sleep",
+    "observedAt": "2026-10-07T12:00:04Z",
+    "data": {
+      "nights": [
+        {
+          "days_ago": 1,
+          "start_min": -60,
+          "end_min": 420,
+          "stages": [
+            {"stage": "light", "duration_min": 240},
+            {"stage": "deep", "duration_min": 180},
+            {"stage": "awake", "duration_min": 60}
+          ]
+        }
+      ]
+    }
+  }
+]

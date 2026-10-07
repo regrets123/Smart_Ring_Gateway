@@ -26,6 +26,66 @@ namespace gateway
         return ESP_OK;
     }
 
+    void HeartRateHistoryParser::reset()
+    {
+        packet_count_ = 0;
+        next_index_ = 0;
+        pending_ = {};
+    }
+
+    esp_err_t HeartRateHistoryParser::parse(const uint8_t *bytes, size_t length,
+                                            HeartRateHistoryRecord &record, bool &complete)
+    {
+        complete = false;
+        record = {};
+        if (ColmiProtocol::validate_notification(bytes, length) != PacketStatus::valid ||
+            bytes[0] != 0x15) {
+            reset();
+            return ESP_ERR_INVALID_RESPONSE;
+        }
+
+        const uint8_t index = bytes[1];
+        if (index == 0xff) {
+            reset();
+            return ESP_ERR_NOT_FOUND;
+        }
+        if (index == 0) {
+            reset();
+            packet_count_ = bytes[2];
+            if (packet_count_ < 2) {
+                reset();
+                return ESP_ERR_INVALID_RESPONSE;
+            }
+            pending_.range = bytes[3];
+            pending_.samples.reserve(9 + static_cast<size_t>(packet_count_ - 2) * 13);
+            next_index_ = 1;
+            return ESP_OK;
+        }
+        if (packet_count_ == 0 || index != next_index_ || index >= packet_count_) {
+            reset();
+            return ESP_ERR_INVALID_RESPONSE;
+        }
+
+        if (index == 1) {
+            pending_.utc_time = static_cast<uint32_t>(bytes[2]) |
+                                (static_cast<uint32_t>(bytes[3]) << 8) |
+                                (static_cast<uint32_t>(bytes[4]) << 16) |
+                                (static_cast<uint32_t>(bytes[5]) << 24);
+            pending_.samples.insert(pending_.samples.end(), bytes + 6, bytes + 15);
+        } else {
+            pending_.samples.insert(pending_.samples.end(), bytes + 2, bytes + 15);
+        }
+
+        if (index == packet_count_ - 1) {
+            record = std::move(pending_);
+            complete = true;
+            reset();
+        } else {
+            ++next_index_;
+        }
+        return ESP_OK;
+    }
+
     esp_err_t Spo2Parser::parse(const uint8_t *bytes, size_t length, Spo2Reading &reading)
     {
         reading.o2Perc = 0;

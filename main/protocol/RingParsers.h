@@ -14,6 +14,19 @@ public:
     esp_err_t parse(const uint8_t* bytes, size_t length, HeartRateReading& reading);
 };
 
+class HeartRateHistoryParser {
+public:
+    // Feed one complete 0x15 notification at a time. complete is true when record is ready.
+    esp_err_t parse(const uint8_t* bytes, size_t length,
+                    HeartRateHistoryRecord& record, bool& complete);
+    void reset();
+
+private:
+    uint8_t packet_count_ = 0;
+    uint8_t next_index_ = 0;
+    HeartRateHistoryRecord pending_;
+};
+
 class Spo2Parser {
 public:
     esp_err_t parse(const uint8_t* bytes, size_t length, Spo2Reading& reading);
