@@ -8,12 +8,16 @@
 namespace gateway {
 
 enum class PacketStatus { valid, wrong_length, bad_checksum };
+enum class LiveMeasurementKind { unknown, heart_rate, spo2 };
 
 class ColmiProtocol {
 public:
     static esp_err_t make_command(uint8_t command, const uint8_t* payload,
                                   size_t payload_length, uint8_t (&out)[16]);
     static PacketStatus validate_notification(const uint8_t* bytes, size_t length);
+    static bool is_live_measurement_command(uint8_t command);
+    static LiveMeasurementKind is_kind(uint8_t kind);
+    static bool is_live_response_state(uint8_t state);
     static esp_err_t battery(uint8_t (&out)[16]);
     static esp_err_t set_time(uint32_t utc_epoch, uint8_t (&out)[16]);
     static esp_err_t hr_settings(uint8_t (&out)[16]);

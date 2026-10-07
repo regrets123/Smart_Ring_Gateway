@@ -7,38 +7,67 @@ namespace gateway {
 
 esp_err_t ColmiProtocol::make_command(uint8_t command, const uint8_t* payload,
                                       size_t payload_length, uint8_t (&out)[16]) {
-    if (payload_length > 14 || (payload_length && !payload)) return ESP_ERR_INVALID_ARG;
+    if (payload_length > 14 || (payload_length && !payload)) {
+        return ESP_ERR_INVALID_ARG;
+    }
     std::memset(out, 0, sizeof(out));
     out[0] = command;
-    if (payload_length) std::memcpy(out + 1, payload, payload_length);
+    if (payload_length) {
+        std::memcpy(out + 1, payload, payload_length);
+    }
     unsigned sum = 0;
-    for (size_t i = 0; i < 15; ++i) sum += out[i];
+    for (size_t i = 0; i < 15; ++i) {
+        sum += out[i];
+    }
     out[15] = static_cast<uint8_t>(sum & 0xff);
     return ESP_OK;
 }
 
 PacketStatus ColmiProtocol::validate_notification(const uint8_t* bytes, size_t length) {
-    if (!bytes || length != 16) return PacketStatus::wrong_length;
+    if (!bytes || length != 16) {
+        return PacketStatus::wrong_length;
+    }
     unsigned sum = 0;
-    for (size_t i = 0; i < 15; ++i) sum += bytes[i];
-    return bytes[15] == static_cast<uint8_t>(sum & 0xff)
-               ? PacketStatus::valid : PacketStatus::bad_checksum;
+    for (size_t i = 0; i < 15; ++i) {
+        sum += bytes[i];
+    }
+    return bytes[15] == static_cast<uint8_t>(sum & 0xff) ? PacketStatus::valid
+                                                         : PacketStatus::bad_checksum;
 }
+
+bool ColmiProtocol::is_live_measurement_command(uint8_t command) { return command == 0x69; }
+
+LiveMeasurementKind ColmiProtocol::is_kind(uint8_t kind) {
+    switch (kind) {
+    case 0x01:
+        return LiveMeasurementKind::heart_rate;
+    case 0x03:
+        return LiveMeasurementKind::spo2;
+    default:
+        return LiveMeasurementKind::unknown;
+    }
+}
+
+bool ColmiProtocol::is_live_response_state(uint8_t state) { return state == 0x00; }
 
 esp_err_t ColmiProtocol::battery(uint8_t (&out)[16]) { return make_command(0x03, nullptr, 0, out); }
 
 esp_err_t ColmiProtocol::set_time(uint32_t utc_epoch, uint8_t (&out)[16]) {
     const time_t instant = static_cast<time_t>(utc_epoch);
     std::tm utc{};
-    if (!gmtime_r(&instant, &utc) || utc.tm_year < 100 || utc.tm_year > 199)
+    if (!gmtime_r(&instant, &utc) || utc.tm_year < 100 || utc.tm_year > 199) {
         return ESP_ERR_INVALID_ARG;
+    }
     const auto bcd = [](int value) -> uint8_t {
         return static_cast<uint8_t>(((value / 10) << 4) | (value % 10));
     };
-    const uint8_t payload[] = {
-        bcd(utc.tm_year - 100), bcd(utc.tm_mon + 1), bcd(utc.tm_mday),
-        bcd(utc.tm_hour), bcd(utc.tm_min), bcd(utc.tm_sec), 1
-    };
+    const uint8_t payload[] = {bcd(utc.tm_year - 100),
+                               bcd(utc.tm_mon + 1),
+                               bcd(utc.tm_mday),
+                               bcd(utc.tm_hour),
+                               bcd(utc.tm_min),
+                               bcd(utc.tm_sec),
+                               1};
     return make_command(0x01, payload, sizeof(payload), out);
 }
 
@@ -54,8 +83,10 @@ esp_err_t ColmiProtocol::steps(uint8_t day_offset, uint8_t (&out)[16]) {
 
 esp_err_t ColmiProtocol::hr_history(uint32_t midnight_epoch, uint8_t (&out)[16]) {
     const uint8_t payload[] = {
-        static_cast<uint8_t>(midnight_epoch), static_cast<uint8_t>(midnight_epoch >> 8),
-        static_cast<uint8_t>(midnight_epoch >> 16), static_cast<uint8_t>(midnight_epoch >> 24),
+        static_cast<uint8_t>(midnight_epoch),
+        static_cast<uint8_t>(midnight_epoch >> 8),
+        static_cast<uint8_t>(midnight_epoch >> 16),
+        static_cast<uint8_t>(midnight_epoch >> 24),
     };
     return make_command(0x15, payload, sizeof(payload), out);
 }
@@ -79,4 +110,4 @@ esp_err_t ColmiProtocol::live_stop(uint8_t kind, uint8_t (&out)[16]) {
     return make_command(0x6a, payload, sizeof(payload), out);
 }
 
-}  // namespace gateway
+} // namespace gateway

@@ -9,8 +9,8 @@
 namespace gateway {
 
 // Converts decoded ring data into JSON text for publishing.
-// The mock conversion is implemented; real JSON fields await BLE discovery.
-// Real-reading stubs clear the output and return ESP_ERR_NOT_SUPPORTED.
+// The mock conversion and live heart-rate BPM conversion are implemented.
+// Other real-reading stubs clear the output and return ESP_ERR_NOT_SUPPORTED.
 // Callers must check the result before publishing.
 class RingJson {
 public:

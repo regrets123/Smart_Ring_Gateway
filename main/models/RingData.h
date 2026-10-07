@@ -2,9 +2,12 @@
 
 namespace gateway {
 
-// Field definitions will be agreed after comparing both protocol sources.
-struct HeartRateReading {};
-struct Spo2Reading {};
+struct HeartRateReading {
+    int bpm = 0;
+};
+struct Spo2Reading {
+    int o2Perc;
+};
 struct SleepRecord {};
 struct StepsReading {};
 
