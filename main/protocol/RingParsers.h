@@ -21,6 +21,7 @@ public:
 
 class SleepParser {
 public:
+    // Expects a complete, reassembled 0x27 Big Data frame.
     esp_err_t parse(const uint8_t* bytes, size_t length, SleepRecord& record);
 };
 

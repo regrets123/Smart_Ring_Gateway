@@ -1,9 +1,9 @@
 #include "protocol/RingParsers.h"
+#include "protocol/BigDataProtocol.h"
 #include "protocol/ColmiProtocol.h"
 
 namespace gateway
 {
-
     esp_err_t HeartRateParser::parse(const uint8_t *bytes, size_t length, HeartRateReading &reading)
     {
         reading.bpm = 0;
@@ -23,6 +23,7 @@ namespace gateway
         reading.bpm = bytes[3];
         return ESP_OK;
     }
+
     esp_err_t Spo2Parser::parse(const uint8_t *bytes, size_t length, Spo2Reading &reading)
     {
         reading.o2Perc = 0;
@@ -40,7 +41,31 @@ namespace gateway
         reading.o2Perc = bytes[3];
         return ESP_OK;
     }
-    esp_err_t SleepParser::parse(const uint8_t *, size_t, SleepRecord &) { return ESP_ERR_NOT_SUPPORTED; }
+
+    esp_err_t SleepParser::parse(const uint8_t *bytes, size_t length, SleepRecord &reading)
+    {
+        reading.nights.clear();
+        reading.raw_payload.clear();
+        if (!bytes)
+        {
+            return ESP_ERR_INVALID_ARG;
+        }
+
+        // The caller must provide the complete frame, not one BLE fragment.
+        BigDataLengthTracker frame;
+        if (frame.push(bytes, length) != BigDataStatus::complete || frame.data_id() != 0x27)
+        {
+            return ESP_ERR_INVALID_RESPONSE;
+        }
+        if (frame.declared_length() == 0)
+        {
+            return ESP_ERR_NOT_FOUND;
+        }
+
+        // The first six bytes are the Big Data header; keep the payload uninterpreted.
+        reading.raw_payload.assign(bytes + 6, bytes + length);
+        return ESP_OK;
+    }
     esp_err_t StepsParser::parse(const uint8_t *, size_t, StepsReading &)
     {
         return ESP_ERR_NOT_SUPPORTED;
