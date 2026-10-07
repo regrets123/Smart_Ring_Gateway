@@ -223,6 +223,18 @@ const char* probe_result_name(ProbeResult result) {
     return "UNKNOWN";
 }
 
+ProbeEntry RingProbe::set_time(IRingTransport& transport, uint32_t utc_epoch,
+                              ProbeObserver& observer) {
+    uint8_t request[16]{};
+    ProbeEntry entry{"set_time"};
+    if (ColmiProtocol::set_time(utc_epoch, request) == ESP_OK)
+        entry = command(transport, observer, "set_time", request, false);
+    else
+        entry.result = ProbeResult::malformed;
+    observer.result(entry);
+    return entry;
+}
+
 ProbeSummary RingProbe::run(IRingTransport& transport, uint32_t today_midnight_epoch,
                             bool has_date, ProbeObserver& observer) {
     ProbeSummary summary;

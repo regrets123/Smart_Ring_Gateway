@@ -42,6 +42,8 @@ public:
 
 class RingProbe {
 public:
+    ProbeEntry set_time(IRingTransport& transport, uint32_t utc_epoch,
+                        ProbeObserver& observer);
     ProbeSummary run(IRingTransport& transport, uint32_t today_midnight_epoch,
                      bool has_date, ProbeObserver& observer);
 };

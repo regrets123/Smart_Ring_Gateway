@@ -1,5 +1,6 @@
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 
 #include "esp_log.h"
@@ -7,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "nvs.h"
 #include "sdkconfig.h"
 
 #include "models/MockData.h"
@@ -20,6 +22,29 @@
 #if CONFIG_GATEWAY_BLE_PROBE_ENABLED
 namespace {
 constexpr const char* kProbeTag = "M7083_PROBE";
+
+bool parse_utc_timestamp(const char* value, uint32_t& epoch) {
+    if (!value || std::strlen(value) != 20 || value[4] != '-' || value[7] != '-' ||
+        value[10] != 'T' || value[13] != ':' || value[16] != ':' || value[19] != 'Z')
+        return false;
+    for (size_t i = 0; i < 20; ++i) {
+        if (i == 4 || i == 7 || i == 10 || i == 13 || i == 16 || i == 19) continue;
+        if (!std::isdigit(static_cast<unsigned char>(value[i]))) return false;
+    }
+    char date[11]{};
+    std::memcpy(date, value, 10);
+    uint32_t midnight = 0;
+    if (gateway::ProbeDate::resolve(date, 0, false, midnight) != ESP_OK) return false;
+    const auto two_digits = [value](size_t index) {
+        return (value[index] - '0') * 10 + value[index + 1] - '0';
+    };
+    const int hour = two_digits(11);
+    const int minute = two_digits(14);
+    const int second = two_digits(17);
+    if (hour > 23 || minute > 59 || second > 59) return false;
+    epoch = midnight + static_cast<uint32_t>(hour * 3600 + minute * 60 + second);
+    return true;
+}
 
 const char* channel_name(gateway::RingChannel channel) {
     return channel == gateway::RingChannel::command ? "command" : "big_data";
@@ -105,6 +130,12 @@ private:
 
 void run_probe() {
     ESP_ERROR_CHECK(nvs_flash_init());
+    uint32_t configured_time = 0;
+    const bool time_requested = CONFIG_GATEWAY_PROBE_SET_TIME_UTC[0] != '\0';
+    const bool configured_time_valid = time_requested &&
+        parse_utc_timestamp(CONFIG_GATEWAY_PROBE_SET_TIME_UTC, configured_time);
+    if (time_requested && !configured_time_valid)
+        ESP_LOGE(kProbeTag, "Invalid one-shot UTC timestamp; expected YYYY-MM-DDTHH:MM:SSZ");
     uint32_t midnight = 0;
     bool clock_valid = false;
     uint32_t synchronized_epoch = 0;
@@ -120,12 +151,15 @@ void run_probe() {
             wifi.disconnect();
         }
     }
-    const auto date_status = gateway::ProbeDate::resolve(CONFIG_GATEWAY_PROBE_DATE,
-                                                         synchronized_epoch, clock_valid, midnight);
+    const auto date_status = gateway::ProbeDate::resolve(
+        CONFIG_GATEWAY_PROBE_DATE,
+        clock_valid ? synchronized_epoch : configured_time,
+        clock_valid || configured_time_valid, midnight);
     if (date_status == ESP_OK)
         ESP_LOGI(kProbeTag, "Probe date UTC midnight epoch=%u source=%s",
                  static_cast<unsigned>(midnight),
-                 CONFIG_GATEWAY_PROBE_DATE[0] ? "menuconfig" : "SNTP");
+                 CONFIG_GATEWAY_PROBE_DATE[0] ? "menuconfig" :
+                 clock_valid ? "SNTP" : "configured UTC timestamp");
     else
         ESP_LOGW(kProbeTag, "Probe date unavailable (%s); HR history will be skipped",
                  esp_err_to_name(date_status));
@@ -145,6 +179,48 @@ void run_probe() {
              transport.has_channel(gateway::RingChannel::big_data));
     static MonitorObserver observer;
     gateway::RingProbe runner;
+    if (configured_time_valid) {
+        nvs_handle_t handle;
+        const auto opened_nvs = nvs_open("m7083_probe", NVS_READWRITE, &handle);
+        if (opened_nvs != ESP_OK) {
+            ESP_LOGE(kProbeTag, "One-shot time marker unavailable: %s",
+                     esp_err_to_name(opened_nvs));
+        } else {
+            uint32_t previous = 0;
+            const auto read_marker = nvs_get_u32(handle, "time_tag", &previous);
+            if (read_marker == ESP_OK && previous == configured_time) {
+                uint8_t previous_result = 0;
+                if (nvs_get_u8(handle, "time_result", &previous_result) == ESP_OK &&
+                    previous_result <= static_cast<uint8_t>(gateway::ProbeResult::malformed))
+                    ESP_LOGI(kProbeTag, "One-shot ring time already attempted: %s; skipping",
+                             gateway::probe_result_name(
+                                 static_cast<gateway::ProbeResult>(previous_result)));
+                else
+                    ESP_LOGI(kProbeTag, "One-shot ring time already attempted; result unavailable; skipping");
+            } else if (read_marker != ESP_OK && read_marker != ESP_ERR_NVS_NOT_FOUND) {
+                ESP_LOGE(kProbeTag, "Cannot read one-shot marker: %s",
+                         esp_err_to_name(read_marker));
+            } else {
+                const auto write_marker = nvs_set_u32(handle, "time_tag", configured_time);
+                const auto saved = write_marker == ESP_OK ? nvs_commit(handle) : write_marker;
+                if (saved != ESP_OK) {
+                    ESP_LOGE(kProbeTag, "Cannot save one-shot marker: %s",
+                             esp_err_to_name(saved));
+                } else {
+                    const uint32_t send_time = clock_valid
+                        ? static_cast<uint32_t>(std::time(nullptr)) : configured_time;
+                    ESP_LOGI(kProbeTag, "One-shot ring time UTC epoch=%u source=%s",
+                             static_cast<unsigned>(send_time),
+                             clock_valid ? "SNTP" : "configured timestamp");
+                    const auto result = runner.set_time(transport, send_time, observer);
+                    const auto saved_result = nvs_set_u8(
+                        handle, "time_result", static_cast<uint8_t>(result.result));
+                    if (saved_result == ESP_OK) nvs_commit(handle);
+                }
+            }
+            nvs_close(handle);
+        }
+    }
     runner.run(transport, midnight, date_status == ESP_OK, observer);
     transport.disconnect();
     ESP_LOGI(kProbeTag, "Probe session finished; reset to run again");

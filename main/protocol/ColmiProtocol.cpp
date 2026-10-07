@@ -1,6 +1,7 @@
 #include "protocol/ColmiProtocol.h"
 
 #include <cstring>
+#include <ctime>
 
 namespace gateway {
 
@@ -25,6 +26,21 @@ PacketStatus ColmiProtocol::validate_notification(const uint8_t* bytes, size_t l
 }
 
 esp_err_t ColmiProtocol::battery(uint8_t (&out)[16]) { return make_command(0x03, nullptr, 0, out); }
+
+esp_err_t ColmiProtocol::set_time(uint32_t utc_epoch, uint8_t (&out)[16]) {
+    const time_t instant = static_cast<time_t>(utc_epoch);
+    std::tm utc{};
+    if (!gmtime_r(&instant, &utc) || utc.tm_year < 100 || utc.tm_year > 199)
+        return ESP_ERR_INVALID_ARG;
+    const auto bcd = [](int value) -> uint8_t {
+        return static_cast<uint8_t>(((value / 10) << 4) | (value % 10));
+    };
+    const uint8_t payload[] = {
+        bcd(utc.tm_year - 100), bcd(utc.tm_mon + 1), bcd(utc.tm_mday),
+        bcd(utc.tm_hour), bcd(utc.tm_min), bcd(utc.tm_sec), 1
+    };
+    return make_command(0x01, payload, sizeof(payload), out);
+}
 
 esp_err_t ColmiProtocol::hr_settings(uint8_t (&out)[16]) {
     const uint8_t payload[] = {1};

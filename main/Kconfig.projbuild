@@ -27,6 +27,11 @@ config GATEWAY_PROBE_DATE
     depends on GATEWAY_BLE_PROBE_ENABLED
     default ""
 
+config GATEWAY_PROBE_SET_TIME_UTC
+    string "One-shot ring clock setting (YYYY-MM-DDTHH:MM:SSZ; leave empty to disable)"
+    depends on GATEWAY_BLE_PROBE_ENABLED
+    default ""
+
 config GATEWAY_WIFI_SSID
     string "Wi-Fi SSID"
     default ""
