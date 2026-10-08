@@ -13,7 +13,7 @@
   },
   {
     "schemaVersion": 1,
-    "recordId": "00000000000000000000000000000002",
+    "recordId": "13a8c22ad1792c63",
     "deviceId": "ring-01",
     "gatewayId": "gateway-01",
     "userId": "user-01",
@@ -39,7 +39,7 @@
   },
   {
     "schemaVersion": 1,
-    "recordId": "00000000000000000000000000000004",
+    "recordId": "42e062e1a35a9bce",
     "deviceId": "ring-01",
     "gatewayId": "gateway-01",
     "userId": "user-01",
@@ -58,7 +58,7 @@
   },
   {
     "schemaVersion": 1,
-    "recordId": "00000000000000000000000000000005",
+    "recordId": "41615c40972cc3df",
     "deviceId": "ring-01",
     "gatewayId": "gateway-01",
     "userId": "user-01",
@@ -81,7 +81,7 @@
   },
   {
     "schemaVersion": 1,
-    "recordId": "00000000000000000000000000000006",
+    "recordId": "4711ee700ae0a8d4",
     "deviceId": "ring-01",
     "gatewayId": "gateway-01",
     "userId": "user-01",
@@ -93,7 +93,23 @@
       "probe_midnight_utc": 1791417600,
       "samples": [
         {"days_ago": 0, "slot": 0, "value_ms": 43},
-        {"days_ago": 0, "slot": 2, "value_ms": 39},
+        {"days_ago": 0, "slot": 2, "value_ms": 39}
+      ]
+    }
+  },
+  {
+    "schemaVersion": 1,
+    "recordId": "1e42988cfc2e700d",
+    "deviceId": "ring-01",
+    "gatewayId": "gateway-01",
+    "userId": "user-01",
+    "kind": "hrvHistory",
+    "observedAt": "2026-10-08T12:00:06Z",
+    "data": {
+      "metric": "hrv_composite_ms",
+      "interval_minutes": 30,
+      "probe_midnight_utc": 1791417600,
+      "samples": [
         {"days_ago": 1, "slot": 20, "value_ms": 45}
       ]
     }
