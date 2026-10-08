@@ -65,17 +65,17 @@ esp_err_t RingJson::serialize(const Spo2Reading& reading, std::string& json) {
 
 esp_err_t RingJson::serialize(const Spo2HistoryRecord& record, std::string& json) {
     json.clear();
-    if (record.samples.empty()) {
+    if (record.days.size() != 1 || record.days.front().samples.empty()) {
         return ESP_ERR_INVALID_ARG;
     }
 
+    const auto& day = record.days.front();
     nlohmann::json samples = nlohmann::json::array();
-    for (const auto& sample : record.samples) {
-        samples.push_back({{"min", sample.min}, {"max", sample.max}});
+    for (const auto& sample : day.samples) {
+        samples.push_back({{"slot", sample.slot}, {"min", sample.min}, {"max", sample.max}});
     }
 
-    const nlohmann::json payload = {{"unknown", record.unknown},
-                                    {"days_ago", record.days_ago},
+    const nlohmann::json payload = {{"days_ago", day.days_ago},
                                     {"samples", std::move(samples)}};
     json = payload.dump();
     return ESP_OK;

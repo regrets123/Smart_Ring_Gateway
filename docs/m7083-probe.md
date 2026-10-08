@@ -31,12 +31,18 @@ SNTP to date history; a configured date would remain fixed across sessions.
 The probe never sets the ring clock unless the one-shot UTC time option is set.
 
 Historical `recordId` values are stable for a device, reading kind, and
-measurement day. HRV and sleep responses are split into one message per day so
+measurement day. HRV, sleep, and SpO₂ history responses are split into one message per day so
 overlapping ring history can be upserted by `recordId`. Live readings receive
 unique IDs because each session measures them again. `observedAt` is the gateway
 publish time; ring history dates remain in the payload or are inferred from the
 probe date and `days_ago`. MQTT QoS 1 acknowledgement confirms broker delivery,
 not storage by a downstream database.
+
+An SpO₂ history payload contains consecutive 49-byte day records: one `days_ago`
+byte and 24 hourly `(max, min)` byte pairs. Zero/zero pairs are omitted; each
+published sample has a `slot` from 0 to 23. The M7083 capture contained three
+day records in one 147-byte payload. This layout agrees with
+[openring's on-device decoder](https://github.com/robinojw/openring/blob/main/src/protocol/decoders/spo2.ts).
 
 Build, flash, and watch the monitor:
 

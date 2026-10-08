@@ -33,14 +33,18 @@ struct Spo2Reading {
 };
 
 struct Spo2HistorySample {
+    uint8_t slot = 0;
     uint8_t min = 0;
     uint8_t max = 0;
 };
 
-struct Spo2HistoryRecord {
-    uint8_t unknown = 0;
+struct Spo2HistoryDay {
     uint8_t days_ago = 0;
     std::vector<Spo2HistorySample> samples;
+};
+
+struct Spo2HistoryRecord {
+    std::vector<Spo2HistoryDay> days;
     std::vector<uint8_t> raw_payload;
 };
 

@@ -181,9 +181,7 @@ namespace gateway
     esp_err_t Spo2HistoryParser::parse(const uint8_t *bytes, size_t length,
                                        Spo2HistoryRecord &record)
     {
-        record.unknown = 0;
-        record.days_ago = 0;
-        record.samples.clear();
+        record.days.clear();
         record.raw_payload.clear();
 
         const esp_err_t status = BigDataProtocol::validate_frame(bytes, length, 0x2a);
@@ -193,16 +191,28 @@ namespace gateway
 
         record.raw_payload.assign(bytes + 6, bytes + length);
         const auto &payload = record.raw_payload;
-        if (payload.size() < 2 || (payload.size() - 2) % 2 != 0) {
+        // The M7083 sends concatenated 49-byte day records: daysAgo followed
+        // by 24 hourly (max, min) pairs. Zero/zero means no reading.
+        constexpr size_t kDayBytes = 1 + 24 * 2;
+        if (payload.empty() || payload.size() % kDayBytes != 0) {
             return ESP_ERR_INVALID_RESPONSE;
         }
 
-        record.unknown = payload[0];
-        record.days_ago = payload[1];
-        for (size_t at = 2; at < payload.size(); at += 2) {
-            record.samples.push_back({payload[at], payload[at + 1]});
+        for (size_t base = 0; base < payload.size(); base += kDayBytes) {
+            Spo2HistoryDay day;
+            day.days_ago = payload[base];
+            for (uint8_t slot = 0; slot < 24; ++slot) {
+                const uint8_t max = payload[base + 1 + 2 * slot];
+                const uint8_t min = payload[base + 2 + 2 * slot];
+                if (max || min) {
+                    day.samples.push_back({slot, min ? min : max, max ? max : min});
+                }
+            }
+            if (!day.samples.empty()) {
+                record.days.push_back(std::move(day));
+            }
         }
-        return record.samples.empty() ? ESP_ERR_NOT_FOUND : ESP_OK;
+        return record.days.empty() ? ESP_ERR_NOT_FOUND : ESP_OK;
     }
 
     esp_err_t SleepParser::parse(const uint8_t *bytes, size_t length, SleepRecord &reading)

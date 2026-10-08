@@ -251,6 +251,7 @@ class MonitorObserver final : public gateway::ProbeObserver {
                  static_cast<unsigned>(entry.elapsed_ms));
         if (entry.result == gateway::ProbeResult::response && publisher_) {
             std::string data;
+            gateway::Spo2HistoryRecord spo2_history;
             const char* kind = nullptr;
             esp_err_t status = ESP_ERR_NOT_SUPPORTED;
             if (std::strcmp(entry.label, "live_hr") == 0 && live_hr_ready_) {
@@ -272,8 +273,8 @@ class MonitorObserver final : public gateway::ProbeObserver {
                 status = serialize_big_data<gateway::SleepParser, gateway::SleepRecord>(data);
             } else if (std::strcmp(entry.label, "spo2_history") == 0) {
                 kind = "spo2History";
-                status = serialize_big_data<gateway::Spo2HistoryParser,
-                                            gateway::Spo2HistoryRecord>(data);
+                gateway::Spo2HistoryParser parser;
+                status = parser.parse(big_frame_.data(), big_frame_.size(), spo2_history);
             }
             if (status == ESP_OK && kind) {
                 if (std::strcmp(entry.label, "hrv") == 0) {
@@ -320,26 +321,38 @@ class MonitorObserver final : public gateway::ProbeObserver {
                             }
                         }
                     }
+                } else if (std::strcmp(entry.label, "spo2_history") == 0) {
+                    for (const auto& day : spo2_history.days) {
+                        const uint32_t offset = static_cast<uint32_t>(day.days_ago) * 86400u;
+                        if (hrv_probe_midnight_utc_ < offset) {
+                            publish_failed_ = true;
+                            continue;
+                        }
+                        gateway::Spo2HistoryRecord one;
+                        one.days.push_back(day);
+                        std::string day_json;
+                        if (serializer_.serialize(one, day_json) == ESP_OK) {
+                            publish(kind, day_json, hrv_probe_midnight_utc_ - offset);
+                        } else {
+                            publish_failed_ = true;
+                        }
+                    }
                 } else {
                     uint32_t day_epoch = 0;
                     if (is_hr_history(entry.label)) {
                         day_epoch = hr_history_.utc_time - hr_history_.utc_time % 86400u;
-                    } else if (std::strcmp(entry.label, "spo2_history") == 0) {
-                        gateway::Spo2HistoryRecord record;
-                        gateway::Spo2HistoryParser parser;
-                        if (parser.parse(big_frame_.data(), big_frame_.size(), record) == ESP_OK) {
-                            const uint32_t offset = static_cast<uint32_t>(record.days_ago) * 86400u;
-                            if (hrv_probe_midnight_utc_ >= offset) {
-                                day_epoch = hrv_probe_midnight_utc_ - offset;
-                            }
-                        }
                     }
                     publish(kind, data, day_epoch);
                 }
             } else if (kind) {
-                publish_failed_ = true;
-                ESP_LOGW(kProbeTag, "No JSON for %s: %s", entry.label,
-                         esp_err_to_name(status));
+                // A decoder cannot be repaired by immediately reading the same ring data again.
+                // Keep the failed metric visible without repeating an otherwise delivered session.
+                if (status == ESP_ERR_NOT_FOUND) {
+                    ESP_LOGI(kProbeTag, "No decoded samples for %s", entry.label);
+                } else {
+                    ESP_LOGW(kProbeTag, "Reading decode unavailable for %s: %s", entry.label,
+                             esp_err_to_name(status));
+                }
             }
         }
         if (is_hr_history(entry.label)) {

@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
@@ -135,6 +136,52 @@ int live_readings() {
     return 0;
 }
 
+int captured_spo2_history() {
+    // M7083 capture: three 49-byte day records in one 147-byte payload.
+    const char* fragments[] = {
+        "bc2a9300562b0263636363636363636363636363",
+        "6363636363636363636363636300000000000000",
+        "0000000000000000000000000000000100000000",
+        "0000000000000000000000000000000063636363",
+        "6363636363636363636363636363636363636363",
+        "6363636300636363636363636363636363636363",
+        "6363636363636363630000000000000000000000",
+        "00000000000000000000000000",
+    };
+    std::vector<uint8_t> frame;
+    for (const char* fragment : fragments) {
+        for (size_t i = 0; fragment[i]; i += 2) {
+            frame.push_back(static_cast<uint8_t>((nibble(fragment[i]) << 4) |
+                                                 nibble(fragment[i + 1])));
+        }
+    }
+    gateway::Spo2HistoryParser parser;
+    gateway::Spo2HistoryRecord record;
+    if (frame.size() != 153 || parser.parse(frame.data(), frame.size(), record) != ESP_OK ||
+        record.days.size() != 3 || record.days[0].days_ago != 2 ||
+        record.days[1].days_ago != 1 || record.days[2].days_ago != 0 ||
+        record.days[0].samples.size() != 13 || record.days[1].samples.size() != 14 ||
+        record.days[2].samples.size() != 12 || record.days[0].samples[0].slot != 0 ||
+        record.days[0].samples[0].min != 99 || record.days[0].samples[0].max != 99) {
+        return 13;
+    }
+    gateway::Spo2HistoryRecord one;
+    one.days.push_back(record.days[0]);
+    gateway::RingJson serializer;
+    std::string output;
+    if (serializer.serialize(one, output) != ESP_OK) return 14;
+    const auto json = nlohmann::json::parse(output);
+    if (json["days_ago"] != 2 || json["samples"].size() != 13 ||
+        json["samples"][0]["slot"] != 0 || json["samples"][0]["min"] != 99 ||
+        json["samples"][0]["max"] != 99) {
+        return 15;
+    }
+    frame[2] = 148;
+    frame.push_back(0);
+    if (parser.parse(frame.data(), frame.size(), record) != ESP_ERR_INVALID_RESPONSE) return 16;
+    return 0;
+}
+
 } // namespace
 
 int main() {
@@ -142,6 +189,9 @@ int main() {
         return result;
     }
     if (const int result = invalid_history()) {
+        return result;
+    }
+    if (const int result = captured_spo2_history()) {
         return result;
     }
     return live_readings();
