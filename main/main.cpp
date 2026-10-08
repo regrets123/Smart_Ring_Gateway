@@ -107,6 +107,10 @@ class MonitorObserver final : public gateway::ProbeObserver {
         hex_string(bytes, length, hex_, sizeof(hex_));
         ESP_LOGI(kProbeTag, "PROBE TX %s ch=%s len=%u hex=%s", label, channel_name(channel),
                  static_cast<unsigned>(length), hex_);
+        if (std::strcmp(label, "hrv") == 0 && channel == gateway::RingChannel::command &&
+            length == 16 && bytes[0] == 0x39) {
+            ESP_LOGI(kProbeTag, "HRV REQUEST page=%u", static_cast<unsigned>(bytes[1]));
+        }
     }
 
     void rx(const char* label, const gateway::RingNotification& note, bool matched,
@@ -117,6 +121,21 @@ class MonitorObserver final : public gateway::ProbeObserver {
                  matched ? 1u : 0u, note.length ? note.bytes[0] : 0u,
                  note.channel == gateway::RingChannel::command ? checksum_name(checksum) : "n/a",
                  hex_);
+        if (std::strcmp(label, "hrv") == 0 && matched &&
+            note.channel == gateway::RingChannel::command && note.length == 16 &&
+            checksum == gateway::PacketStatus::valid) {
+            if (note.bytes[1] == 0xff) {
+                ESP_LOGI(kProbeTag, "HRV NO_DATA marker=ff");
+            } else if (note.bytes[1] == 0) {
+                ESP_LOGI(kProbeTag, "HRV HEADER page=0 reported_pages=%u",
+                         static_cast<unsigned>(note.bytes[2]));
+            } else {
+                char payload_hex[14 * 3 + 1]{};
+                hex_string(note.bytes + 2, 13, payload_hex, sizeof(payload_hex));
+                ESP_LOGI(kProbeTag, "HRV PAGE page=%u payload_hex=%s",
+                         static_cast<unsigned>(note.bytes[1]), payload_hex);
+            }
+        }
         if (matched && note.channel == gateway::RingChannel::command && note.length == 16 &&
             note.bytes[0] == 0x03 && checksum == gateway::PacketStatus::valid) {
             ESP_LOGI(kProbeTag, "BATTERY candidate_percent=%u candidate_charge_flag=%u",

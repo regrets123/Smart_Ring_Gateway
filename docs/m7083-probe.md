@@ -66,6 +66,14 @@ HRV, sleep and SpO₂ Big Data history, then live HR and SpO₂. Each live senso
 is stopped after at most 30 seconds. The program does not send time, binding,
 settings, reboot, or power commands.
 
+For HRV, look for `HRV REQUEST page=0`, followed by `HRV HEADER page=0
+reported_pages=...`. The probe then requests each reported page and prints
+`HRV PAGE page=... payload_hex=...` for valid replies, or `HRV NO_DATA
+marker=ff` if the ring reports no data. The accompanying `PROBE RX hrv` line
+contains the complete 16-byte packet, including its checksum. These lines
+show the M7083's response without assuming the R09's HRV record format or
+assigning a value in milliseconds before it is verified.
+
 To save evidence on Windows PowerShell, run the monitor with a transcript:
 
 ```powershell
