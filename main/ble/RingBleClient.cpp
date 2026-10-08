@@ -146,8 +146,7 @@ int RingBleClient::on_service(uint16_t, const ble_gatt_error* error, const ble_g
             self.device_info_end_ = service->end_handle;
         }
     } else {
-        self.procedure_status_ = error->status == BLE_HS_EDONE ? 0 : error->status;
-        xEventGroupSetBits(self.events_, kProcedureDone);
+        self.finish_procedure(error->status);
     }
     return 0;
 }
@@ -175,8 +174,7 @@ int RingBleClient::on_characteristic(uint16_t, const ble_gatt_error* error, cons
             target.notify_properties = chr->properties;
         }
     } else {
-        self.procedure_status_ = error->status == BLE_HS_EDONE ? 0 : error->status;
-        xEventGroupSetBits(self.events_, kProcedureDone);
+        self.finish_procedure(error->status);
     }
     return 0;
 }
@@ -189,8 +187,7 @@ int RingBleClient::on_descriptor(uint16_t, const ble_gatt_error* error, uint16_t
             self.handles(self.discovering_).cccd = dsc->handle;
         }
     } else {
-        self.procedure_status_ = error->status == BLE_HS_EDONE ? 0 : error->status;
-        xEventGroupSetBits(self.events_, kProcedureDone);
+        self.finish_procedure(error->status);
     }
     return 0;
 }
@@ -228,6 +225,16 @@ esp_err_t RingBleClient::wait_procedure(int start_rc, uint32_t timeout_ms) {
     return procedure_status_ == 0 ? ESP_OK : ESP_FAIL;
 }
 
+void RingBleClient::prepare_procedure() {
+    procedure_status_ = 0;
+    xEventGroupClearBits(events_, kProcedureDone);
+}
+
+void RingBleClient::finish_procedure(int status) {
+    procedure_status_ = status == BLE_HS_EDONE ? 0 : status;
+    xEventGroupSetBits(events_, kProcedureDone);
+}
+
 esp_err_t RingBleClient::discover_channel(RingChannel channel) {
     discovering_ = channel;
     auto& target = handles(channel);
@@ -235,8 +242,7 @@ esp_err_t RingBleClient::discover_channel(RingChannel channel) {
         return ESP_OK;
     }
     characteristic_count_ = 0;
-    procedure_status_ = 0;
-    xEventGroupClearBits(events_, kProcedureDone);
+    prepare_procedure();
     esp_err_t result =
         wait_procedure(ble_gattc_disc_all_chrs(conn_, target.service_start, target.service_end,
                                                on_characteristic, this),
@@ -253,16 +259,14 @@ esp_err_t RingBleClient::discover_channel(RingChannel channel) {
     if (end <= target.notify_value) {
         return ESP_OK;
     }
-    procedure_status_ = 0;
-    xEventGroupClearBits(events_, kProcedureDone);
+    prepare_procedure();
     return wait_procedure(
         ble_gattc_disc_all_dscs(conn_, target.notify_value, end, on_descriptor, this),
         kGattTimeoutMs);
 }
 
 esp_err_t RingBleClient::discover() {
-    procedure_status_ = 0;
-    xEventGroupClearBits(events_, kProcedureDone);
+    prepare_procedure();
     esp_err_t result =
         wait_procedure(ble_gattc_disc_all_svcs(conn_, on_service, this), kGattTimeoutMs);
     if (result != ESP_OK) {
@@ -359,9 +363,8 @@ esp_err_t RingBleClient::subscribe() {
             continue;
         }
         const uint8_t enabled[] = {1, 0};
-        procedure_status_ = 0;
         reading_ = false;
-        xEventGroupClearBits(events_, kProcedureDone);
+        prepare_procedure();
         const auto result = wait_procedure(
             ble_gattc_write_flat(conn_, target.cccd, enabled, sizeof(enabled), on_attribute, this),
             kGattTimeoutMs);
@@ -388,9 +391,8 @@ esp_err_t RingBleClient::write(RingChannel channel, const uint8_t* bytes, size_t
         return from_nimble(ble_gattc_write_no_rsp_flat(conn_, target.write_value, bytes,
                                                        static_cast<uint16_t>(length)));
     }
-    procedure_status_ = 0;
     reading_ = false;
-    xEventGroupClearBits(events_, kProcedureDone);
+    prepare_procedure();
     return wait_procedure(ble_gattc_write_flat(conn_, target.write_value, bytes,
                                                static_cast<uint16_t>(length), on_attribute, this),
                           kGattTimeoutMs);
@@ -420,8 +422,7 @@ esp_err_t RingBleClient::read_device_info(uint16_t characteristic_uuid, uint8_t*
     uuid.value = characteristic_uuid;
     reading_ = true;
     read_length_ = 0;
-    procedure_status_ = 0;
-    xEventGroupClearBits(events_, kProcedureDone);
+    prepare_procedure();
     const auto result =
         wait_procedure(ble_gattc_read_by_uuid(conn_, device_info_start_, device_info_end_, &uuid.u,
                                               on_attribute, this),

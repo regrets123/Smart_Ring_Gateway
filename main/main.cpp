@@ -9,7 +9,6 @@
 #include <nlohmann/json.hpp>
 
 #include "esp_log.h"
-#include "esp_netif_sntp.h"
 #include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -27,6 +26,14 @@
 
 namespace {
 constexpr const char* kProbeTag = "M7083_PROBE";
+
+bool is_hr_history(const char* label) {
+    return std::strcmp(label, "hr_today") == 0 || std::strcmp(label, "hr_yesterday") == 0;
+}
+
+bool is_big_data_history(const char* label) {
+    return std::strcmp(label, "sleep") == 0 || std::strcmp(label, "spo2_history") == 0;
+}
 
 bool parse_utc_timestamp(const char* value, uint32_t& epoch) {
     if (!value || std::strlen(value) != 20 || value[4] != '-' || value[7] != '-' ||
@@ -130,8 +137,8 @@ class MonitorObserver final : public gateway::ProbeObserver {
                  matched ? 1u : 0u, note.length ? note.bytes[0] : 0u,
                  note.channel == gateway::RingChannel::command ? checksum_name(checksum) : "n/a",
                  hex_);
-        if (std::strcmp(label, "hrv") == 0 && matched &&
-            note.channel == gateway::RingChannel::command && note.length == 16 &&
+        const bool command_match = matched && note.channel == gateway::RingChannel::command;
+        if (std::strcmp(label, "hrv") == 0 && command_match && note.length == 16 &&
             checksum == gateway::PacketStatus::valid) {
             bool complete = false;
             gateway::HrvHistoryRecord record;
@@ -161,38 +168,33 @@ class MonitorObserver final : public gateway::ProbeObserver {
                          static_cast<unsigned>(note.bytes[1]), payload_hex);
             }
         }
-        if (matched && note.channel == gateway::RingChannel::command && note.length == 16 &&
+        if (command_match && note.length == 16 &&
             note.bytes[0] == 0x03 && checksum == gateway::PacketStatus::valid) {
             ESP_LOGI(kProbeTag, "BATTERY candidate_percent=%u candidate_charge_flag=%u",
                      note.bytes[1], note.bytes[2]);
         }
 
-        if (matched && note.channel == gateway::RingChannel::command &&
-            std::strcmp(label, "live_hr") == 0) {
+        if (command_match && std::strcmp(label, "live_hr") == 0) {
             gateway::HeartRateParser parser;
             gateway::HeartRateReading reading;
             if (parser.parse(note.bytes, note.length, reading) == ESP_OK) {
                 live_hr_ = reading;
                 live_hr_ready_ = true;
             }
-        } else if (matched && note.channel == gateway::RingChannel::command &&
-                   std::strcmp(label, "live_spo2") == 0) {
+        } else if (command_match && std::strcmp(label, "live_spo2") == 0) {
             gateway::Spo2Parser parser;
             gateway::Spo2Reading reading{};
             if (parser.parse(note.bytes, note.length, reading) == ESP_OK) {
                 live_spo2_ = reading;
                 live_spo2_ready_ = true;
             }
-        } else if (matched && note.channel == gateway::RingChannel::command &&
-                   (std::strcmp(label, "hr_today") == 0 ||
-                    std::strcmp(label, "hr_yesterday") == 0)) {
+        } else if (command_match && is_hr_history(label)) {
             bool complete = false;
             const auto status =
                 hr_history_parser_.parse(note.bytes, note.length, hr_history_, complete);
             hr_history_ready_ = status == ESP_OK && complete;
         } else if (matched && note.channel == gateway::RingChannel::big_data &&
-                   (std::strcmp(label, "sleep") == 0 ||
-                    std::strcmp(label, "spo2_history") == 0)) {
+                   is_big_data_history(label)) {
             big_frame_.insert(big_frame_.end(), note.bytes, note.bytes + note.length);
         }
     }
@@ -224,8 +226,7 @@ class MonitorObserver final : public gateway::ProbeObserver {
             } else if (std::strcmp(entry.label, "live_spo2") == 0 && live_spo2_ready_) {
                 kind = "spo2";
                 status = serializer_.serialize(live_spo2_, data);
-            } else if ((std::strcmp(entry.label, "hr_today") == 0 ||
-                        std::strcmp(entry.label, "hr_yesterday") == 0) && hr_history_ready_) {
+            } else if (is_hr_history(entry.label) && hr_history_ready_) {
                 kind = "heartRateHistory";
                 status = serializer_.serialize(hr_history_, data);
             } else if (std::strcmp(entry.label, "hrv") == 0) {
@@ -234,32 +235,21 @@ class MonitorObserver final : public gateway::ProbeObserver {
                              ? serializer_.serialize(hrv_history_, data)
                              : ESP_ERR_INVALID_RESPONSE;
             } else if (std::strcmp(entry.label, "sleep") == 0) {
-                gateway::SleepRecord record;
-                gateway::SleepParser parser;
-                status = parser.parse(big_frame_.data(), big_frame_.size(), record);
-                if (status == ESP_OK) {
-                    kind = "sleep";
-                    status = serializer_.serialize(record, data);
-                }
+                kind = "sleep";
+                status = serialize_big_data<gateway::SleepParser, gateway::SleepRecord>(data);
             } else if (std::strcmp(entry.label, "spo2_history") == 0) {
-                gateway::Spo2HistoryRecord record;
-                gateway::Spo2HistoryParser parser;
-                status = parser.parse(big_frame_.data(), big_frame_.size(), record);
-                if (status == ESP_OK) {
-                    kind = "spo2History";
-                    status = serializer_.serialize(record, data);
-                }
+                kind = "spo2History";
+                status = serialize_big_data<gateway::Spo2HistoryParser,
+                                            gateway::Spo2HistoryRecord>(data);
             }
             if (status == ESP_OK && kind) {
                 publish(kind, data);
-            } else if (kind || std::strcmp(entry.label, "sleep") == 0 ||
-                       std::strcmp(entry.label, "spo2_history") == 0) {
+            } else if (kind) {
                 ESP_LOGW(kProbeTag, "No JSON for %s: %s", entry.label,
                          esp_err_to_name(status));
             }
         }
-        if (std::strcmp(entry.label, "hr_today") == 0 ||
-            std::strcmp(entry.label, "hr_yesterday") == 0) {
+        if (is_hr_history(entry.label)) {
             hr_history_parser_.reset();
             hr_history_ready_ = false;
         }
@@ -269,8 +259,7 @@ class MonitorObserver final : public gateway::ProbeObserver {
             hrv_history_error_ = false;
             hrv_pages_seen_ = false;
         }
-        if (std::strcmp(entry.label, "sleep") == 0 ||
-            std::strcmp(entry.label, "spo2_history") == 0) {
+        if (is_big_data_history(entry.label)) {
             big_frame_.clear();
         }
     }
@@ -288,6 +277,14 @@ class MonitorObserver final : public gateway::ProbeObserver {
     }
 
   private:
+    template <typename Parser, typename Record>
+    esp_err_t serialize_big_data(std::string& data) {
+        Record record;
+        Parser parser;
+        const auto status = parser.parse(big_frame_.data(), big_frame_.size(), record);
+        return status == ESP_OK ? serializer_.serialize(record, data) : status;
+    }
+
     void publish(const char* kind, const std::string& data) {
         // TODO: After end-to-end validation, use a stable ID and measurement time for each ring reading so resyncs do not create duplicate rows.
         const std::time_t now = std::time(nullptr);
@@ -353,21 +350,17 @@ void run_probe() {
     bool clock_valid = false;
     uint32_t synchronized_epoch = 0;
     static gateway::WifiManager wifi;
+    static gateway::MqttPublisher mqtt;
     const bool wifi_connected = CONFIG_GATEWAY_WIFI_SSID[0] != '\0' && wifi.connect() == ESP_OK;
     if (!wifi_connected) {
         ESP_LOGW(kProbeTag, "Wi-Fi unavailable; ring values will not be published");
     }
     if (wifi_connected) {
-        esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
-        if (esp_netif_sntp_init(&config) == ESP_OK) {
-            clock_valid = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(15000)) == ESP_OK;
-            if (clock_valid) {
-                synchronized_epoch = static_cast<uint32_t>(std::time(nullptr));
-            }
-            esp_netif_sntp_deinit();
+        clock_valid = mqtt.sync_clock() == ESP_OK;
+        if (clock_valid) {
+            synchronized_epoch = static_cast<uint32_t>(std::time(nullptr));
         }
     }
-    static gateway::MqttPublisher mqtt;
     bool mqtt_connected = false;
     if (wifi_connected && CONFIG_GATEWAY_MQTT_URI[0] != '\0') {
         const auto status = mqtt.connect();

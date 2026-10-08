@@ -4,26 +4,35 @@
 
 #include <utility>
 
+namespace {
+
+esp_err_t parse_live_value(const uint8_t* bytes, size_t length,
+                           gateway::LiveMeasurementKind expected_kind, uint8_t& value) {
+    value = 0;
+    if (gateway::ColmiProtocol::validate_notification(bytes, length) !=
+            gateway::PacketStatus::valid ||
+        !gateway::ColmiProtocol::is_live_measurement_command(bytes[0]) ||
+        gateway::ColmiProtocol::is_kind(bytes[1]) != expected_kind ||
+        !gateway::ColmiProtocol::is_live_response_state(bytes[2])) {
+        return ESP_ERR_INVALID_RESPONSE;
+    }
+    value = bytes[3];
+    return value == 0 ? ESP_ERR_NOT_FOUND : ESP_OK;
+}
+
+} // namespace
+
 namespace gateway
 {
     esp_err_t HeartRateParser::parse(const uint8_t *bytes, size_t length, HeartRateReading &reading)
     {
         reading.bpm = 0;
-        if (ColmiProtocol::validate_notification(bytes, length) != PacketStatus::valid ||
-            !ColmiProtocol::is_live_measurement_command(bytes[0]) ||
-            ColmiProtocol::is_kind(bytes[1]) != LiveMeasurementKind::heart_rate ||
-            !ColmiProtocol::is_live_response_state(bytes[2]))
-        {
-            return ESP_ERR_INVALID_RESPONSE;
+        uint8_t value = 0;
+        const auto status = parse_live_value(bytes, length, LiveMeasurementKind::heart_rate, value);
+        if (status == ESP_OK) {
+            reading.bpm = value;
         }
-
-        // M7083 live HR packets put BPM in byte 3; zero means no reading yet.
-        if (bytes[3] == 0)
-        {
-            return ESP_ERR_NOT_FOUND;
-        }
-        reading.bpm = bytes[3];
-        return ESP_OK;
+        return status;
     }
 
     void HeartRateHistoryParser::reset()
@@ -161,19 +170,12 @@ namespace gateway
     esp_err_t Spo2Parser::parse(const uint8_t *bytes, size_t length, Spo2Reading &reading)
     {
         reading.o2Perc = 0;
-        if (ColmiProtocol::validate_notification(bytes, length) != PacketStatus::valid ||
-            !ColmiProtocol::is_live_measurement_command(bytes[0]) ||
-            ColmiProtocol::is_kind(bytes[1]) != LiveMeasurementKind::spo2 ||
-            !ColmiProtocol::is_live_response_state(bytes[2]))
-        {
-            return ESP_ERR_INVALID_RESPONSE;
+        uint8_t value = 0;
+        const auto status = parse_live_value(bytes, length, LiveMeasurementKind::spo2, value);
+        if (status == ESP_OK) {
+            reading.o2Perc = value;
         }
-        if (bytes[3] == 0)
-        {
-            return ESP_ERR_NOT_FOUND;
-        }
-        reading.o2Perc = bytes[3];
-        return ESP_OK;
+        return status;
     }
 
     esp_err_t Spo2HistoryParser::parse(const uint8_t *bytes, size_t length,

@@ -36,6 +36,13 @@ void note_rx(ProbeObserver& observer, const char* label, const RingNotification&
     observer.rx(label, note, matched, check);
 }
 
+template <size_t N>
+esp_err_t send_packet(IRingTransport& transport, ProbeObserver& observer, const char* label,
+                      RingChannel channel, const uint8_t (&bytes)[N]) {
+    observer.tx(label, channel, bytes, N);
+    return transport.write(channel, bytes, N);
+}
+
 ProbeEntry command(IRingTransport& transport, ProbeObserver& observer, const char* label,
                    const uint8_t (&request)[16], bool multi, bool live = false,
                    uint8_t* first_valid = nullptr, bool hrv_stream = false) {
@@ -45,8 +52,7 @@ ProbeEntry command(IRingTransport& transport, ProbeObserver& observer, const cha
         return entry;
     }
     const auto start = Clock::now();
-    observer.tx(label, RingChannel::command, request, sizeof(request));
-    if (transport.write(RingChannel::command, request, sizeof(request)) != ESP_OK) {
+    if (send_packet(transport, observer, label, RingChannel::command, request) != ESP_OK) {
         entry.result = ProbeResult::transport_error;
         entry.elapsed_ms = elapsed(start);
         return entry;
@@ -78,8 +84,7 @@ ProbeEntry command(IRingTransport& transport, ProbeObserver& observer, const cha
             if (live && !sent_continue && !got_valid && waited >= 5000) {
                 uint8_t continuation[16]{};
                 ColmiProtocol::live_continue(request[1], continuation);
-                observer.tx(label, RingChannel::command, continuation, sizeof(continuation));
-                if (transport.write(RingChannel::command, continuation, sizeof(continuation)) !=
+                if (send_packet(transport, observer, label, RingChannel::command, continuation) !=
                     ESP_OK) {
                     entry.result = ProbeResult::transport_error;
                     break;
@@ -137,8 +142,7 @@ ProbeEntry command(IRingTransport& transport, ProbeObserver& observer, const cha
     if (live && transport.is_connected()) {
         uint8_t stop[16]{};
         ColmiProtocol::live_stop(request[1], stop);
-        observer.tx(label, RingChannel::command, stop, sizeof(stop));
-        if (transport.write(RingChannel::command, stop, sizeof(stop)) != ESP_OK) {
+        if (send_packet(transport, observer, label, RingChannel::command, stop) != ESP_OK) {
             entry.result = ProbeResult::transport_error;
         }
     }
@@ -162,8 +166,7 @@ ProbeEntry big_data(IRingTransport& transport, ProbeObserver& observer, const ch
     uint8_t request[7]{};
     BigDataProtocol::make_read(id, request);
     const auto start = Clock::now();
-    observer.tx(label, RingChannel::big_data, request, sizeof(request));
-    if (transport.write(RingChannel::big_data, request, sizeof(request)) != ESP_OK) {
+    if (send_packet(transport, observer, label, RingChannel::big_data, request) != ESP_OK) {
         entry.result = ProbeResult::transport_error;
         return entry;
     }
@@ -301,8 +304,9 @@ ProbeSummary RingProbe::run(IRingTransport& transport, uint32_t today_midnight_e
     };
     for (size_t i = 0; i < summary.entries.size(); ++i) {
         if (!transport.is_connected()) {
-            summary.entries[i].result = ProbeResult::skipped_disconnected;
-            observer.result(summary.entries[i]);
+            ProbeEntry entry{labels[i]};
+            entry.result = ProbeResult::skipped_disconnected;
+            record(i, entry);
             continue;
         }
         uint8_t request[16]{};
@@ -326,8 +330,9 @@ ProbeSummary RingProbe::run(IRingTransport& transport, uint32_t today_midnight_e
         case 5:
         case 6:
             if (!has_date || (i == 6 && today_midnight_epoch < 86400)) {
-                summary.entries[i].result = ProbeResult::skipped_no_date;
-                observer.result(summary.entries[i]);
+                ProbeEntry entry{labels[i]};
+                entry.result = ProbeResult::skipped_no_date;
+                record(i, entry);
             } else {
                 ColmiProtocol::hr_history(today_midnight_epoch - (i == 6 ? 86400 : 0), request);
                 record(i, command(transport, observer, labels[i], request, true));

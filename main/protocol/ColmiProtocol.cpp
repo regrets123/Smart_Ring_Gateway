@@ -4,6 +4,17 @@
 #include <ctime>
 
 namespace gateway {
+namespace {
+
+uint8_t packet_checksum(const uint8_t* bytes) {
+    unsigned sum = 0;
+    for (size_t i = 0; i < 15; ++i) {
+        sum += bytes[i];
+    }
+    return static_cast<uint8_t>(sum & 0xff);
+}
+
+} // namespace
 
 esp_err_t ColmiProtocol::make_command(uint8_t command, const uint8_t* payload,
                                       size_t payload_length, uint8_t (&out)[16]) {
@@ -15,11 +26,7 @@ esp_err_t ColmiProtocol::make_command(uint8_t command, const uint8_t* payload,
     if (payload_length) {
         std::memcpy(out + 1, payload, payload_length);
     }
-    unsigned sum = 0;
-    for (size_t i = 0; i < 15; ++i) {
-        sum += out[i];
-    }
-    out[15] = static_cast<uint8_t>(sum & 0xff);
+    out[15] = packet_checksum(out);
     return ESP_OK;
 }
 
@@ -27,12 +34,8 @@ PacketStatus ColmiProtocol::validate_notification(const uint8_t* bytes, size_t l
     if (!bytes || length != 16) {
         return PacketStatus::wrong_length;
     }
-    unsigned sum = 0;
-    for (size_t i = 0; i < 15; ++i) {
-        sum += bytes[i];
-    }
-    return bytes[15] == static_cast<uint8_t>(sum & 0xff) ? PacketStatus::valid
-                                                         : PacketStatus::bad_checksum;
+    return bytes[15] == packet_checksum(bytes) ? PacketStatus::valid
+                                                : PacketStatus::bad_checksum;
 }
 
 bool ColmiProtocol::is_live_measurement_command(uint8_t command) { return command == 0x69; }

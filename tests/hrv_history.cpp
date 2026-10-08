@@ -4,6 +4,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "protocol/ColmiProtocol.h"
 #include "protocol/RingParsers.h"
 #include "serialization/RingJson.h"
 
@@ -103,11 +104,45 @@ int invalid_history() {
     return 0;
 }
 
+int live_readings() {
+    uint8_t packet[16]{};
+    const uint8_t hr_payload[] = {1, 0, 79};
+    gateway::ColmiProtocol::make_command(0x69, hr_payload, sizeof(hr_payload), packet);
+    gateway::HeartRateParser hr_parser;
+    gateway::Spo2Parser spo2_parser;
+    gateway::HeartRateReading hr;
+    gateway::Spo2Reading spo2{};
+    if (hr_parser.parse(packet, sizeof(packet), hr) != ESP_OK || hr.bpm != 79 ||
+        spo2_parser.parse(packet, sizeof(packet), spo2) != ESP_ERR_INVALID_RESPONSE ||
+        spo2.o2Perc != 0) {
+        return 9;
+    }
+    const uint8_t spo2_payload[] = {3, 0, 98};
+    gateway::ColmiProtocol::make_command(0x69, spo2_payload, sizeof(spo2_payload), packet);
+    if (spo2_parser.parse(packet, sizeof(packet), spo2) != ESP_OK || spo2.o2Perc != 98 ||
+        hr_parser.parse(packet, sizeof(packet), hr) != ESP_ERR_INVALID_RESPONSE || hr.bpm != 0) {
+        return 10;
+    }
+    const uint8_t empty_payload[] = {3, 0, 0};
+    gateway::ColmiProtocol::make_command(0x69, empty_payload, sizeof(empty_payload), packet);
+    if (spo2_parser.parse(packet, sizeof(packet), spo2) != ESP_ERR_NOT_FOUND || spo2.o2Perc != 0) {
+        return 11;
+    }
+    packet[15] ^= 1;
+    if (spo2_parser.parse(packet, sizeof(packet), spo2) != ESP_ERR_INVALID_RESPONSE) {
+        return 12;
+    }
+    return 0;
+}
+
 } // namespace
 
 int main() {
     if (const int result = captured_history()) {
         return result;
     }
-    return invalid_history();
+    if (const int result = invalid_history()) {
+        return result;
+    }
+    return live_readings();
 }

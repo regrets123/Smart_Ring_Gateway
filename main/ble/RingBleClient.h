@@ -56,6 +56,8 @@ private:
     esp_err_t discover();
     esp_err_t discover_channel(RingChannel channel);
     esp_err_t wait_procedure(int start_rc, uint32_t timeout_ms);
+    void prepare_procedure();
+    void finish_procedure(int status);
     ChannelHandles& handles(RingChannel channel);
     const ChannelHandles& handles(RingChannel channel) const;
     bool uuid_equals(const ble_uuid_t* actual, const ble_uuid_any_t& expected) const;
