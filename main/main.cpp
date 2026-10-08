@@ -590,7 +590,19 @@ bool run_probe() {
 
 extern "C" void app_main(void) {
     ESP_ERROR_CHECK(nvs_flash_init());
+    bool clock_ready = false;
     for (;;) {
+        if (!clock_ready) {
+            clock_ready = CONFIG_GATEWAY_WIFI_SSID[0] != '\0' &&
+                          wifi_manager().connect() == ESP_OK &&
+                          mqtt_publisher().sync_clock() == ESP_OK &&
+                          std::time(nullptr) >= 1577836800;
+            if (!clock_ready) {
+                ESP_LOGW(kProbeTag, "Clock unavailable; retrying before schedule check");
+                vTaskDelay(pdMS_TO_TICKS(kRetrySeconds * 1000));
+                continue;
+            }
+        }
         const std::time_t now = std::time(nullptr);
         uint32_t last_sync = 0;
         nvs_handle_t handle;

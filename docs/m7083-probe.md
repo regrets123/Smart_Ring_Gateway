@@ -4,7 +4,8 @@ The gateway keeps running after boot. When a sync is due, it scans for the exact
 advertised ring name, performs a session when the ring comes into range, and then
 waits 23 hours after a complete history session. An unsuccessful scan or history
 session retries after 10 seconds. The successful sync time is stored in NVS, so a
-reboot does not force another session. Wi-Fi, MQTT, and a valid clock are required
+reboot does not force another session. On boot, the gateway synchronizes its clock
+before checking that saved time. Wi-Fi, MQTT, and a valid clock are required
 before scanning because there is no durable offline upload queue.
 
 Each session prints transmitted bytes, received BLE notifications, and query
