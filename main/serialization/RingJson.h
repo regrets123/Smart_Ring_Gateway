@@ -15,6 +15,7 @@ class RingJson {
 public:
     esp_err_t serialize(const HeartRateReading& reading, std::string& json);
     esp_err_t serialize(const HeartRateHistoryRecord& record, std::string& json);
+    esp_err_t serialize(const HrvHistoryRecord& record, std::string& json);
     esp_err_t serialize(const Spo2Reading& reading, std::string& json);
     esp_err_t serialize(const Spo2HistoryRecord& record, std::string& json);
     esp_err_t serialize(const SleepRecord& record, std::string& json);

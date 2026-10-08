@@ -30,6 +30,28 @@ esp_err_t RingJson::serialize(const HeartRateHistoryRecord& record, std::string&
     return ESP_OK;
 }
 
+esp_err_t RingJson::serialize(const HrvHistoryRecord& record, std::string& json) {
+    json.clear();
+    if (record.interval_minutes == 0 || record.samples.empty()) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    nlohmann::json samples = nlohmann::json::array();
+    for (const auto& sample : record.samples) {
+        samples.push_back({{"days_ago", sample.days_ago},
+                           {"slot", sample.slot},
+                           {"value_ms", sample.value_ms}});
+    }
+    nlohmann::json payload = {{"metric", "hrv_composite_ms"},
+                              {"interval_minutes", record.interval_minutes},
+                              {"samples", std::move(samples)}};
+    if (record.probe_midnight_utc != 0) {
+        payload["probe_midnight_utc"] = record.probe_midnight_utc;
+    }
+    json = payload.dump();
+    return ESP_OK;
+}
+
 esp_err_t RingJson::serialize(const Spo2Reading& reading, std::string& json) {
     json.clear();
     if (reading.o2Perc <= 0 || reading.o2Perc > 100) {

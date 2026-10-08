@@ -27,6 +27,21 @@ private:
     HeartRateHistoryRecord pending_;
 };
 
+class HrvHistoryParser {
+public:
+    // Feed complete 0x39 notifications in arrival order. The 0xff marker ends
+    // the multi-day stream; complete is true only after that marker.
+    esp_err_t parse(const uint8_t* bytes, size_t length,
+                    HrvHistoryRecord& record, bool& complete);
+    void reset();
+
+private:
+    uint8_t page_count_ = 0;
+    uint8_t next_index_ = 0;
+    uint8_t days_ago_ = 0;
+    HrvHistoryRecord pending_;
+};
+
 class Spo2Parser {
 public:
     esp_err_t parse(const uint8_t* bytes, size_t length, Spo2Reading& reading);

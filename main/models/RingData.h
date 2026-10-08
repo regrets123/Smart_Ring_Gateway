@@ -15,6 +15,19 @@ struct HeartRateHistoryRecord {
     // Sample bytes in packet order; trailing padding is retained.
     std::vector<uint8_t> samples;
 };
+
+struct HrvHistorySample {
+    uint8_t days_ago = 0;
+    uint16_t slot = 0;
+    uint8_t value_ms = 0;
+};
+
+struct HrvHistoryRecord {
+    uint8_t interval_minutes = 0;
+    uint32_t probe_midnight_utc = 0;
+    // The packet carries day offsets and slots, not absolute timestamps.
+    std::vector<HrvHistorySample> samples;
+};
 struct Spo2Reading {
     int o2Perc;
 };

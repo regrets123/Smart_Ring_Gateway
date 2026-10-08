@@ -3,6 +3,7 @@
 #include <cstring>
 #include <ctime>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -93,12 +94,20 @@ void hex_string(const uint8_t* bytes, size_t length, char* output, size_t capaci
 
 class MonitorObserver final : public gateway::ProbeObserver {
   public:
+    void set_hrv_day_anchor(uint32_t probe_midnight_utc) {
+        hrv_probe_midnight_utc_ = probe_midnight_utc;
+    }
+
     void set_publisher(gateway::MqttPublisher* publisher) {
         publisher_ = publisher;
         hr_history_parser_.reset();
         hr_history_ready_ = false;
+        hrv_history_parser_.reset();
+        hrv_history_ready_ = false;
+        hrv_history_error_ = false;
         live_hr_ready_ = false;
         live_spo2_ready_ = false;
+        hrv_pages_seen_ = false;
         big_frame_.clear();
     }
 
@@ -124,12 +133,28 @@ class MonitorObserver final : public gateway::ProbeObserver {
         if (std::strcmp(label, "hrv") == 0 && matched &&
             note.channel == gateway::RingChannel::command && note.length == 16 &&
             checksum == gateway::PacketStatus::valid) {
+            bool complete = false;
+            gateway::HrvHistoryRecord record;
+            const auto status = hrv_history_parser_.parse(note.bytes, note.length, record, complete);
+            if (status == ESP_OK && complete) {
+                hrv_history_ = std::move(record);
+                hrv_history_.probe_midnight_utc = hrv_probe_midnight_utc_;
+                hrv_history_ready_ = true;
+            } else if (status != ESP_OK && status != ESP_ERR_NOT_FOUND) {
+                hrv_history_error_ = true;
+                ESP_LOGW(kProbeTag, "HRV parse failed: %s", esp_err_to_name(status));
+            }
             if (note.bytes[1] == 0xff) {
-                ESP_LOGI(kProbeTag, "HRV NO_DATA marker=ff");
+                if (hrv_pages_seen_) {
+                    ESP_LOGI(kProbeTag, "HRV END marker=ff");
+                } else {
+                    ESP_LOGI(kProbeTag, "HRV NO_DATA marker=ff");
+                }
             } else if (note.bytes[1] == 0) {
                 ESP_LOGI(kProbeTag, "HRV HEADER page=0 reported_pages=%u",
                          static_cast<unsigned>(note.bytes[2]));
             } else {
+                hrv_pages_seen_ = true;
                 char payload_hex[14 * 3 + 1]{};
                 hex_string(note.bytes + 2, 13, payload_hex, sizeof(payload_hex));
                 ESP_LOGI(kProbeTag, "HRV PAGE page=%u payload_hex=%s",
@@ -203,6 +228,11 @@ class MonitorObserver final : public gateway::ProbeObserver {
                         std::strcmp(entry.label, "hr_yesterday") == 0) && hr_history_ready_) {
                 kind = "heartRateHistory";
                 status = serializer_.serialize(hr_history_, data);
+            } else if (std::strcmp(entry.label, "hrv") == 0) {
+                kind = "hrvHistory";
+                status = hrv_history_ready_ && !hrv_history_error_
+                             ? serializer_.serialize(hrv_history_, data)
+                             : ESP_ERR_INVALID_RESPONSE;
             } else if (std::strcmp(entry.label, "sleep") == 0) {
                 gateway::SleepRecord record;
                 gateway::SleepParser parser;
@@ -232,6 +262,12 @@ class MonitorObserver final : public gateway::ProbeObserver {
             std::strcmp(entry.label, "hr_yesterday") == 0) {
             hr_history_parser_.reset();
             hr_history_ready_ = false;
+        }
+        if (std::strcmp(entry.label, "hrv") == 0) {
+            hrv_history_parser_.reset();
+            hrv_history_ready_ = false;
+            hrv_history_error_ = false;
+            hrv_pages_seen_ = false;
         }
         if (std::strcmp(entry.label, "sleep") == 0 ||
             std::strcmp(entry.label, "spo2_history") == 0) {
@@ -290,11 +326,17 @@ class MonitorObserver final : public gateway::ProbeObserver {
     gateway::RingJson serializer_;
     gateway::HeartRateHistoryParser hr_history_parser_;
     gateway::HeartRateHistoryRecord hr_history_;
+    gateway::HrvHistoryParser hrv_history_parser_;
+    gateway::HrvHistoryRecord hrv_history_;
     gateway::HeartRateReading live_hr_;
     gateway::Spo2Reading live_spo2_{};
     bool hr_history_ready_ = false;
     bool live_hr_ready_ = false;
     bool live_spo2_ready_ = false;
+    bool hrv_pages_seen_ = false;
+    bool hrv_history_ready_ = false;
+    bool hrv_history_error_ = false;
+    uint32_t hrv_probe_midnight_utc_ = 0;
     std::vector<uint8_t> big_frame_;
 };
 
@@ -367,6 +409,7 @@ void run_probe() {
              transport.has_channel(gateway::RingChannel::big_data));
     static MonitorObserver observer;
     observer.set_publisher(mqtt_connected ? &mqtt : nullptr);
+    observer.set_hrv_day_anchor(date_status == ESP_OK ? midnight : 0);
     gateway::RingProbe runner;
     if (configured_time_valid) {
         nvs_handle_t handle;

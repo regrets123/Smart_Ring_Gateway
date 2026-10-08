@@ -13,10 +13,10 @@ See [the gateway architecture](docs/architecture.md) and
 [MQTT publishing setup](docs/mqtt-publishing.md). Start with the one owned ring;
 keep device identities and protocol handling extensible for future devices/users.
 
-The [M7083 raw BLE probe](docs/m7083-probe.md) provides a selectable ESP32-C3
-diagnostic mode for the QRing-compatible HAVIT ring verified by a Python
-battery request. It prints raw command and Big Data responses plus a complete
-per-query summary before health-data decoding or JSON work.
+The [M7083 BLE probe](docs/m7083-probe.md) runs a diagnostic session against the
+QRing-compatible HAVIT ring. It prints raw command and Big Data responses plus
+a per-query summary, and publishes supported decoded readings as JSON when MQTT
+is configured. HRV history parsing is based on a real M7083 packet capture.
 
 ## Protocol references
 
@@ -35,25 +35,23 @@ be checked against both sources and, eventually, real R09 captures.
 | --- | --- |
 | `main/ble` | Discover and connect to the ring, write GATT commands, receive notifications |
 | `main/protocol/ColmiProtocol.*` | Encode and decode normal command packets |
-| `main/protocol/RingParsers.*` | Parse heart rate, SpO2, sleep, and steps |
-| `main/models/RingData.h` | Real reading types; fields are still to be defined |
-| `main/models/MockData.h` | Temporary publishing-test reading and IDs |
-| `main/serialization/RingJson.*` | Convert decoded readings to JSON; upload format is still to be defined |
+| `main/protocol/RingParsers.*` | Parse heart rate, HRV history, SpO2, and sleep; steps decoding is pending |
+| `main/models/RingData.h` | Decoded reading types |
+| `main/serialization/RingJson.*` | Convert decoded readings to JSON |
 | `main/network` | Wi-Fi and MQTT publishing with clock synchronization and CA verification |
 | `main/certs` | Public MQTT CA certificate embedded in the firmware |
 | `tests` | Host-only checks for the gateway JSON serializer |
 
-The mock publisher sends a version 1 `heartRate` record with `data.bpm` to
-`gateway/mock/readings` (QoS 1, not retained). Configure Wi-Fi, your
-existing broker, credentials, and topic in menuconfig. Real BLE parsing and
-serialization remain stubs returning `ESP_ERR_NOT_SUPPORTED`; the real upload
-format is still undecided.
+Configure Wi-Fi, the broker, credentials, and topic in menuconfig. The gateway
+publishes version 1 records for supported readings; see
+[payload examples](main/models/payloadExample.json). Historical HRV uses
+`kind: "hrvHistory"` and `metric: "hrv_composite_ms"`.
 
 ## Build
 
 `main/idf_component.yml` pins the managed `nlohmann/json` dependency to 3.12.0.
 ESP-IDF downloads it and the pinned ESP-MQTT dependency during configuration.
-The JSON serialization layer currently implements only the mock payload.
+The JSON serialization layer covers the supported decoded readings.
 
 From an ESP-IDF terminal:
 

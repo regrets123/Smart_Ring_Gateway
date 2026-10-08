@@ -1,7 +1,10 @@
 # Publish to the existing MQTT infrastructure
 
-The gateway currently publishes a mock reading. Use the existing Mosquitto server
-and webhook; this repository contains no broker, webhook, or storage backend.
+This page describes the initial mock publishing test. The current M7083 probe
+also publishes decoded readings, including `hrvHistory`; see
+[the probe guide](m7083-probe.md) and [payload examples](../main/models/payloadExample.json).
+Use the existing Mosquitto server and webhook; this repository contains no
+broker, webhook, or storage backend.
 
 ## Topic and payload
 

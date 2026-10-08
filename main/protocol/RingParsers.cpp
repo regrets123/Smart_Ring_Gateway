@@ -86,6 +86,78 @@ namespace gateway
         return ESP_OK;
     }
 
+    void HrvHistoryParser::reset()
+    {
+        page_count_ = 0;
+        next_index_ = 0;
+        days_ago_ = 0;
+        pending_ = {};
+    }
+
+    esp_err_t HrvHistoryParser::parse(const uint8_t *bytes, size_t length,
+                                     HrvHistoryRecord &record, bool &complete)
+    {
+        complete = false;
+        record = {};
+        if (ColmiProtocol::validate_notification(bytes, length) != PacketStatus::valid ||
+            bytes[0] != 0x39) {
+            reset();
+            return ESP_ERR_INVALID_RESPONSE;
+        }
+
+        const uint8_t index = bytes[1];
+        if (index == 0xff) {
+            if (next_index_ != 0) {
+                reset();
+                return ESP_ERR_INVALID_RESPONSE;
+            }
+            if (pending_.samples.empty()) {
+                reset();
+                return ESP_ERR_NOT_FOUND;
+            }
+            record = std::move(pending_);
+            complete = true;
+            reset();
+            return ESP_OK;
+        }
+        if (index == 0) {
+            if (next_index_ != 0 || bytes[2] < 2 || bytes[2] > 64 || bytes[3] == 0 ||
+                (pending_.interval_minutes && pending_.interval_minutes != bytes[3])) {
+                reset();
+                return ESP_ERR_INVALID_RESPONSE;
+            }
+            page_count_ = bytes[2];
+            pending_.interval_minutes = bytes[3];
+            next_index_ = 1;
+            return ESP_OK;
+        }
+        if (next_index_ == 0 || index != next_index_ || index >= page_count_) {
+            reset();
+            return ESP_ERR_INVALID_RESPONSE;
+        }
+
+        if (index == 1) {
+            // In the M7083 capture this byte advances 0, 1, 2, 3 across days.
+            days_ago_ = bytes[2];
+        }
+        // Page 1 has 12 values after its day byte; later pages carry 13
+        // values starting at byte 2. Slot positions continue across pages.
+        const size_t first_byte = index == 1 ? 3 : 2;
+        const size_t first_slot = index == 1 ? 0 : 12 + static_cast<size_t>(index - 2) * 13;
+        const size_t slots_per_day = 1440 / pending_.interval_minutes;
+        for (size_t at = first_byte; at < 15; ++at) {
+            const size_t slot = first_slot + at - first_byte;
+            if (slot >= slots_per_day) {
+                break;
+            }
+            if (bytes[at] != 0 && bytes[at] != 0xff) {
+                pending_.samples.push_back({days_ago_, static_cast<uint16_t>(slot), bytes[at]});
+            }
+        }
+        next_index_ = index + 1 == page_count_ ? 0 : static_cast<uint8_t>(index + 1);
+        return ESP_OK;
+    }
+
     esp_err_t Spo2Parser::parse(const uint8_t *bytes, size_t length, Spo2Reading &reading)
     {
         reading.o2Perc = 0;

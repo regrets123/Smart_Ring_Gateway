@@ -199,6 +199,17 @@ struct FakeTransport : gateway::IRingTransport {
             enqueue(c, header + 1, sizeof(header) - 1);
             enqueue(c, tail, sizeof(tail));
         } else if (p[0] != 0x6a) {
+            if (p[0] == 0x39 && p[1] == 2 && !no_data) {
+                // A final HRV request can return a record stream with repeated page IDs.
+                const uint8_t pages[][2] = {{0, 2}, {1, 42}, {2, 43}, {0xff, 0}};
+                for (const auto& payload : pages) {
+                    uint8_t packet[16]{};
+                    gateway::ColmiProtocol::make_command(0x39, payload,
+                                                         payload[0] == 0xff ? 1 : 2, packet);
+                    enqueue(c, packet, 16);
+                }
+                return ESP_OK;
+            }
             uint8_t unrelated[16]{};
             gateway::ColmiProtocol::battery(unrelated);
             if (p[0] == 0x16) {
@@ -277,7 +288,8 @@ int test_session() {
     }
     if (summary.entries[8].result != gateway::ProbeResult::response ||
         summary.entries[8].bytes != 9 || summary.lost_notifications != 2 ||
-        summary.entries[7].packets != 3) {
+        summary.entries[7].result != gateway::ProbeResult::response ||
+        summary.entries[7].packets != 6) {
         return 41;
     }
     if (observer.info_count != 5 || observer.results != 12) {

@@ -38,7 +38,7 @@ void note_rx(ProbeObserver& observer, const char* label, const RingNotification&
 
 ProbeEntry command(IRingTransport& transport, ProbeObserver& observer, const char* label,
                    const uint8_t (&request)[16], bool multi, bool live = false,
-                   uint8_t* first_valid = nullptr) {
+                   uint8_t* first_valid = nullptr, bool hrv_stream = false) {
     ProbeEntry entry{label};
     entry.result = unavailable(transport, RingChannel::command);
     if (entry.result != ProbeResult::response) {
@@ -97,7 +97,8 @@ ProbeEntry command(IRingTransport& transport, ProbeObserver& observer, const cha
             note.channel == RingChannel::command && note.length > 0 &&
             note.bytes[0] == command_id &&
             (command_id != 0x39 ||
-             (note.length > 1 && (note.bytes[1] == request[1] || note.bytes[1] == 0xff)));
+             (note.length > 1 && (hrv_stream || note.bytes[1] == request[1] ||
+                                  note.bytes[1] == 0xff)));
         const auto check = ColmiProtocol::validate_notification(note.bytes, note.length);
         note_rx(observer, label, note, same);
         if (!same) {
@@ -113,7 +114,7 @@ ProbeEntry command(IRingTransport& transport, ProbeObserver& observer, const cha
             got_valid = true;
             if (!live && note.bytes[1] == 0xff &&
                 (command_id == 0x43 || command_id == 0x15 || command_id == 0x39)) {
-                got_no_data = true;
+                got_no_data = command_id != 0x39 || entry.packets == 1;
                 break;
             }
             if (command_id == 0x15 && note.bytes[1] == 0) {
@@ -346,10 +347,16 @@ ProbeSummary RingProbe::run(IRingTransport& transport, uint32_t today_midnight_e
                     } else {
                         for (uint8_t page = 1; page <= pages; ++page) {
                             ColmiProtocol::hrv_page(page, request);
-                            auto part = command(transport, observer, labels[i], request, false);
+                            // The last HRV request may stream several records, each with its
+                            // own page indices, before the 0xff end marker.
+                            auto part = command(transport, observer, labels[i], request,
+                                                page == pages, false, nullptr, page == pages);
                             hrv.packets += part.packets;
                             hrv.bytes += part.bytes;
                             hrv.elapsed_ms += part.elapsed_ms;
+                            if (part.result == ProbeResult::no_data && hrv.packets > part.packets) {
+                                break;
+                            }
                             if (part.result != ProbeResult::response) {
                                 hrv.result = part.result;
                                 break;
