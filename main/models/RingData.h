@@ -52,6 +52,7 @@ enum class SleepStage : uint8_t {
     unknown = 0,
     light = 2,
     deep = 3,
+    rem = 4,
     awake = 5,
 };
 
@@ -62,7 +63,8 @@ struct SleepStageSpan {
 
 struct SleepNight {
     uint8_t days_ago = 0;
-    // Signed minute offsets from midnight of the day identified by days_ago.
+    // The capture suggests days_ago names the wake date. Start/end are signed
+    // clock-minute offsets; a start greater than end is on the preceding evening.
     int16_t start_min = 0;
     int16_t end_min = 0;
     std::vector<SleepStageSpan> stages;

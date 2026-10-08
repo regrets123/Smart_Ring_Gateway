@@ -21,6 +21,12 @@ void decode(const char* hex, uint8_t (&packet)[16]) {
     }
 }
 
+void append_hex(const char* hex, std::vector<uint8_t>& bytes) {
+    for (size_t i = 0; hex[i]; i += 2) {
+        bytes.push_back(static_cast<uint8_t>((nibble(hex[i]) << 4) | nibble(hex[i + 1])));
+    }
+}
+
 int captured_history() {
     // M7083 capture: four daily records, 30-minute slots, then 0xff terminator.
     const char* packets[] = {
@@ -150,10 +156,7 @@ int captured_spo2_history() {
     };
     std::vector<uint8_t> frame;
     for (const char* fragment : fragments) {
-        for (size_t i = 0; fragment[i]; i += 2) {
-            frame.push_back(static_cast<uint8_t>((nibble(fragment[i]) << 4) |
-                                                 nibble(fragment[i + 1])));
-        }
+        append_hex(fragment, frame);
     }
     gateway::Spo2HistoryParser parser;
     gateway::Spo2HistoryRecord record;
@@ -182,6 +185,57 @@ int captured_spo2_history() {
     return 0;
 }
 
+int captured_sleep_history() {
+    const char* fragments[] = {
+        "bc276700ca5b0202365805a601020b0312040a05",
+        "0402220311040d0220040b02010502021d031804",
+        "1b02310316041c032b02320508020b0503021f04",
+        "0c0204002cfd0411010225031604110224040c02",
+        "20031d04160233030e0506021305040208050b02",
+        "220413031e040d0214",
+    };
+    std::vector<uint8_t> frame;
+    for (const char* fragment : fragments) append_hex(fragment, frame);
+    gateway::SleepParser parser;
+    gateway::SleepRecord record;
+    if (frame.size() != 109 || parser.parse(frame.data(), frame.size(), record) != ESP_OK ||
+        record.nights.size() != 2 || record.nights[0].days_ago != 2 ||
+        record.nights[0].start_min != 1368 || record.nights[0].end_min != 422 ||
+        record.nights[0].stages.size() != 25) return 17;
+    int total = 0;
+    int rem = 0;
+    for (const auto& span : record.nights[0].stages) {
+        total += span.duration_min;
+        if (span.stage == gateway::SleepStage::rem) rem += span.duration_min;
+    }
+    if (total != 494 || rem != 101) return 18;
+    gateway::SleepRecord one;
+    one.nights.push_back(record.nights[0]);
+    gateway::RingJson serializer;
+    std::string output;
+    if (serializer.serialize(one, output) != ESP_OK) return 19;
+    const auto json = nlohmann::json::parse(output);
+    if (json["nights"][0]["start_time"] != "22:48" ||
+        json["nights"][0]["end_time"] != "07:02" ||
+        json["nights"][0].contains("start_min") ||
+        json["nights"][0].contains("end_min") ||
+        json["nights"][0]["stages"].size() != 25 ||
+        json["nights"][0]["stages"][2]["stage"] != "rem" ||
+        json["nights"][0]["stages"][2]["duration_min"] != 10) return 20;
+    gateway::SleepRecord negative_start;
+    gateway::SleepNight previous_evening;
+    previous_evening.days_ago = 1;
+    previous_evening.start_min = -60;
+    previous_evening.end_min = 420;
+    previous_evening.stages.push_back({gateway::SleepStage::light, 60});
+    negative_start.nights.push_back(previous_evening);
+    if (serializer.serialize(negative_start, output) != ESP_OK) return 21;
+    const auto negative_json = nlohmann::json::parse(output);
+    if (negative_json["nights"][0]["start_time"] != "23:00" ||
+        negative_json["nights"][0]["end_time"] != "07:00") return 22;
+    return 0;
+}
+
 } // namespace
 
 int main() {
@@ -192,6 +246,9 @@ int main() {
         return result;
     }
     if (const int result = captured_spo2_history()) {
+        return result;
+    }
+    if (const int result = captured_sleep_history()) {
         return result;
     }
     return live_readings();

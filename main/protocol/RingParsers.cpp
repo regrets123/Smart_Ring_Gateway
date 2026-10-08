@@ -268,6 +268,7 @@ namespace gateway
                 const uint8_t stage = payload[at];
                 if (stage == static_cast<uint8_t>(SleepStage::light) ||
                     stage == static_cast<uint8_t>(SleepStage::deep) ||
+                    stage == static_cast<uint8_t>(SleepStage::rem) ||
                     stage == static_cast<uint8_t>(SleepStage::awake)) {
                     night.stages.push_back({static_cast<SleepStage>(stage), payload[at + 1]});
                 }

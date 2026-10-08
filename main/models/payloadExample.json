@@ -111,11 +111,12 @@
       "nights": [
         {
           "days_ago": 1,
-          "start_min": -60,
-          "end_min": 420,
+          "start_time": "23:00",
+          "end_time": "07:00",
           "stages": [
-            {"stage": "light", "duration_min": 240},
+            {"stage": "light", "duration_min": 180},
             {"stage": "deep", "duration_min": 180},
+            {"stage": "rem", "duration_min": 60},
             {"stage": "awake", "duration_min": 60}
           ]
         }

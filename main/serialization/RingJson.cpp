@@ -1,10 +1,22 @@
 #include "serialization/RingJson.h"
 
+#include <cstdio>
 #include <utility>
 
 #include <nlohmann/json.hpp>
 
 namespace gateway {
+namespace {
+
+std::string clock_time(int16_t minutes) {
+    const int minute_of_day = (static_cast<int>(minutes) % 1440 + 1440) % 1440;
+    char formatted[6]{};
+    std::snprintf(formatted, sizeof(formatted), "%02d:%02d",
+                  minute_of_day / 60, minute_of_day % 60);
+    return formatted;
+}
+
+} // namespace
 
 esp_err_t RingJson::serialize(const HeartRateReading& reading, std::string& json) {
     json.clear();
@@ -99,6 +111,9 @@ esp_err_t RingJson::serialize(const SleepRecord& record, std::string& json) {
             case SleepStage::deep:
                 name = "deep";
                 break;
+            case SleepStage::rem:
+                name = "rem";
+                break;
             case SleepStage::awake:
                 name = "awake";
                 break;
@@ -113,8 +128,8 @@ esp_err_t RingJson::serialize(const SleepRecord& record, std::string& json) {
             return ESP_ERR_INVALID_ARG;
         }
         nights.push_back({{"days_ago", night.days_ago},
-                          {"start_min", night.start_min},
-                          {"end_min", night.end_min},
+                          {"start_time", clock_time(night.start_min)},
+                          {"end_time", clock_time(night.end_min)},
                           {"stages", std::move(stages)}});
     }
 

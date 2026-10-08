@@ -44,6 +44,16 @@ published sample has a `slot` from 0 to 23. The M7083 capture contained three
 day records in one 147-byte payload. This layout agrees with
 [openring's on-device decoder](https://github.com/robinojw/openring/blob/main/src/protocol/decoders/spo2.ts).
 
+Sleep stage codes are 2=light, 3=deep, 4=REM, and 5=awake. The captured
+`days_ago=2` night starts at minute 1368 (22:48) and ends at minute 422
+(07:02 the next day). Its 494-minute interval matches the sum of all stage
+durations when REM is included. Since a `days_ago=0` record already exists at
+midday but starts in the evening, the offset appears to name the wake date. The
+absolute dates inferred from `days_ago` assume the ring and gateway agree on
+the calendar day. MQTT sleep JSON uses `start_time` and `end_time` as `HH:MM`
+clock strings; the raw signed minute offsets stay inside the firmware. These
+clock strings have no timezone or date of their own.
+
 Build, flash, and watch the monitor:
 
 ```sh
