@@ -14,6 +14,7 @@
 
 # Local VS Code and ESP-IDF extension settings
 /.vscode/
+/.cache/
 
 # Editor and operating system files
 *.swp
@@ -21,3 +22,4 @@
 *~
 .DS_Store
 Thumbs.db
+dependencies.lock
