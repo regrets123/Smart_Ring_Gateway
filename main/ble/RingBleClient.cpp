@@ -291,6 +291,12 @@ esp_err_t RingBleClient::open(const char* exact_name, const char* optional_addre
     }
     exact_name_ = exact_name;
     optional_address_ = optional_address;
+    command_ = {};
+    big_data_ = {};
+    device_info_start_ = 0;
+    device_info_end_ = 0;
+    lost_.store(0);
+    if (notifications_) xQueueReset(notifications_);
     if (!events_) {
         events_ = xEventGroupCreate();
     }

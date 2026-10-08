@@ -1,9 +1,15 @@
 # M7083 raw BLE probe
 
-This mode runs one diagnostic session per boot against an exact advertised ring
-name. It prints transmitted bytes, every received BLE notification, and a result
-for each query. When Wi-Fi and MQTT are configured, supported decoded readings
-are also published.
+The gateway keeps running after boot. When a sync is due, it scans for the exact
+advertised ring name, performs a session when the ring comes into range, and then
+waits 23 hours after a complete history session. An unsuccessful scan or history
+session retries after 10 seconds. The successful sync time is stored in NVS, so a
+reboot does not force another session. Wi-Fi, MQTT, and a valid clock are required
+before scanning because there is no durable offline upload queue.
+
+Each session prints transmitted bytes, received BLE notifications, and query
+results. Supported decoded readings are also published. Live HR and SpO₂ remain
+part of a session as extra samples from the time the ring was nearby.
 
 ## Configure and flash
 
@@ -14,17 +20,23 @@ idf.py set-target esp32c3
 idf.py menuconfig
 ```
 
-Under **Smart Ring Gateway → Run mode**, select **Run one M7083 BLE diagnostic
-session**. Set **Exact ring advertised name** to `M7083_7904` or the exact full
+Under **Smart Ring Gateway**, set **Exact ring advertised name** to `M7083_7904` or the exact full
 name shown by your ring. The optional address accepts
 `31:35:45:31:79:04` for the ring in the Python capture; leave it empty if the
 advertisement name alone is enough. The ring must be advertising and free to
 connect; close QRing before running the probe.
 
-For HR history, set an explicit UTC **probe date** in `YYYY-MM-DD` format. If
-empty, the gateway tries SNTP when a Wi-Fi SSID is configured. If neither gives
-a validated date, only today's and yesterday's HR history are skipped. Steps
-use the ring's day offsets and still run. The probe never sets the ring clock.
+Leave the UTC **probe date** empty for continuous operation. The gateway uses
+SNTP to date history; a configured date would remain fixed across sessions.
+The probe never sets the ring clock unless the one-shot UTC time option is set.
+
+Historical `recordId` values are stable for a device, reading kind, and
+measurement day. HRV and sleep responses are split into one message per day so
+overlapping ring history can be upserted by `recordId`. Live readings receive
+unique IDs because each session measures them again. `observedAt` is the gateway
+publish time; ring history dates remain in the payload or are inferred from the
+probe date and `days_ago`. MQTT QoS 1 acknowledgement confirms broker delivery,
+not storage by a downstream database.
 
 Build, flash, and watch the monitor:
 

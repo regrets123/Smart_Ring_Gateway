@@ -1,6 +1,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <cinttypes>
 #include <ctime>
 #include <string>
 #include <utility>
@@ -9,8 +10,8 @@
 #include <nlohmann/json.hpp>
 
 #include "esp_log.h"
-#include "esp_random.h"
-#include "freertos/FreeRTOS.h"
+#include "esp_random.h" // IWYU pragma: keep
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep; required before task.h
 #include "freertos/task.h"
 #include "nvs_flash.h"
 #include "nvs.h"
@@ -26,6 +27,35 @@
 
 namespace {
 constexpr const char* kProbeTag = "M7083_PROBE";
+constexpr uint32_t kSyncIntervalSeconds = 23 * 60 * 60;
+constexpr uint32_t kRetrySeconds = 10;
+constexpr uint32_t kIdleCheckSeconds = 60;
+
+gateway::WifiManager& wifi_manager() {
+    static gateway::WifiManager wifi;
+    return wifi;
+}
+
+gateway::MqttPublisher& mqtt_publisher() {
+    static gateway::MqttPublisher mqtt;
+    return mqtt;
+}
+
+uint64_t stable_record_id(const char* kind, uint32_t day_epoch) {
+    uint64_t hash = 14695981039346656037ULL;
+    const auto add = [&hash](const char* value) {
+        for (; *value; ++value) {
+            hash = (hash ^ static_cast<uint8_t>(*value)) * 1099511628211ULL;
+        }
+        hash = (hash ^ 0xffu) * 1099511628211ULL;
+    };
+    add(CONFIG_GATEWAY_DEVICE_ID);
+    add(kind);
+    char day[16]{};
+    std::snprintf(day, sizeof(day), "%" PRIu32, day_epoch);
+    add(day);
+    return hash;
+}
 
 bool is_hr_history(const char* label) {
     return std::strcmp(label, "hr_today") == 0 || std::strcmp(label, "hr_yesterday") == 0;
@@ -107,6 +137,7 @@ class MonitorObserver final : public gateway::ProbeObserver {
 
     void set_publisher(gateway::MqttPublisher* publisher) {
         publisher_ = publisher;
+        publish_failed_ = false;
         hr_history_parser_.reset();
         hr_history_ready_ = false;
         hrv_history_parser_.reset();
@@ -117,6 +148,8 @@ class MonitorObserver final : public gateway::ProbeObserver {
         hrv_pages_seen_ = false;
         big_frame_.clear();
     }
+
+    bool publish_failed() const { return publish_failed_; }
 
     void tx(const char* label, gateway::RingChannel channel, const uint8_t* bytes,
             size_t length) override {
@@ -243,8 +276,68 @@ class MonitorObserver final : public gateway::ProbeObserver {
                                             gateway::Spo2HistoryRecord>(data);
             }
             if (status == ESP_OK && kind) {
-                publish(kind, data);
+                if (std::strcmp(entry.label, "hrv") == 0) {
+                    if (!hrv_probe_midnight_utc_) {
+                        publish_failed_ = true;
+                    }
+                    bool seen[256]{};
+                    for (const auto& source : hrv_history_.samples) {
+                        const uint32_t offset = source.days_ago;
+                        if (seen[offset]) continue;
+                        seen[offset] = true;
+                        gateway::HrvHistoryRecord day;
+                        day.interval_minutes = hrv_history_.interval_minutes;
+                        day.probe_midnight_utc = hrv_history_.probe_midnight_utc;
+                        for (const auto& sample : hrv_history_.samples) {
+                            if (sample.days_ago == offset) day.samples.push_back(sample);
+                        }
+                        if (hrv_probe_midnight_utc_ < offset * 86400u) {
+                            publish_failed_ = true;
+                            continue;
+                        }
+                        const uint32_t epoch = hrv_probe_midnight_utc_ - offset * 86400u;
+                        std::string day_json;
+                        if (serializer_.serialize(day, day_json) == ESP_OK) {
+                            publish(kind, day_json, epoch);
+                        }
+                    }
+                } else if (std::strcmp(entry.label, "sleep") == 0) {
+                    gateway::SleepRecord record;
+                    gateway::SleepParser parser;
+                    if (parser.parse(big_frame_.data(), big_frame_.size(), record) == ESP_OK) {
+                        for (const auto& night : record.nights) {
+                            gateway::SleepRecord one;
+                            one.nights.push_back(night);
+                            const uint32_t offset = static_cast<uint32_t>(night.days_ago) * 86400u;
+                            if (hrv_probe_midnight_utc_ < offset) {
+                                publish_failed_ = true;
+                                continue;
+                            }
+                            const uint32_t epoch = hrv_probe_midnight_utc_ - offset;
+                            std::string night_json;
+                            if (serializer_.serialize(one, night_json) == ESP_OK) {
+                                publish(kind, night_json, epoch);
+                            }
+                        }
+                    }
+                } else {
+                    uint32_t day_epoch = 0;
+                    if (is_hr_history(entry.label)) {
+                        day_epoch = hr_history_.utc_time - hr_history_.utc_time % 86400u;
+                    } else if (std::strcmp(entry.label, "spo2_history") == 0) {
+                        gateway::Spo2HistoryRecord record;
+                        gateway::Spo2HistoryParser parser;
+                        if (parser.parse(big_frame_.data(), big_frame_.size(), record) == ESP_OK) {
+                            const uint32_t offset = static_cast<uint32_t>(record.days_ago) * 86400u;
+                            if (hrv_probe_midnight_utc_ >= offset) {
+                                day_epoch = hrv_probe_midnight_utc_ - offset;
+                            }
+                        }
+                    }
+                    publish(kind, data, day_epoch);
+                }
             } else if (kind) {
+                publish_failed_ = true;
                 ESP_LOGW(kProbeTag, "No JSON for %s: %s", entry.label,
                          esp_err_to_name(status));
             }
@@ -285,12 +378,19 @@ class MonitorObserver final : public gateway::ProbeObserver {
         return status == ESP_OK ? serializer_.serialize(record, data) : status;
     }
 
-    void publish(const char* kind, const std::string& data) {
-        // TODO: After end-to-end validation, use a stable ID and measurement time for each ring reading so resyncs do not create duplicate rows.
+    void publish(const char* kind, const std::string& data, uint32_t day_epoch) {
+        const bool historical = std::strcmp(kind, "heartRate") != 0 &&
+                                std::strcmp(kind, "spo2") != 0;
+        if (historical && !day_epoch) {
+            publish_failed_ = true;
+            ESP_LOGW(kProbeTag, "Skipping %s publish: measurement day unavailable", kind);
+            return;
+        }
         const std::time_t now = std::time(nullptr);
         std::tm utc{};
         if (now < 1577836800 || !gmtime_r(&now, &utc)) {
             ESP_LOGW(kProbeTag, "Skipping %s publish: clock unavailable", kind);
+            if (historical) publish_failed_ = true;
             return;
         }
         char observed_at[21]{};
@@ -298,9 +398,14 @@ class MonitorObserver final : public gateway::ProbeObserver {
             return;
         }
         char record_id[33]{};
-        std::snprintf(record_id, sizeof(record_id), "%08x%08x%08x%08x",
-                      static_cast<unsigned>(esp_random()), static_cast<unsigned>(esp_random()),
-                      static_cast<unsigned>(esp_random()), static_cast<unsigned>(esp_random()));
+        if (day_epoch != 0) {
+            std::snprintf(record_id, sizeof(record_id), "%016" PRIx64,
+                          stable_record_id(kind, day_epoch));
+        } else {
+            std::snprintf(record_id, sizeof(record_id), "%08x%08x%08x%08x",
+                          static_cast<unsigned>(esp_random()), static_cast<unsigned>(esp_random()),
+                          static_cast<unsigned>(esp_random()), static_cast<unsigned>(esp_random()));
+        }
         const nlohmann::json message = {{"schemaVersion", 1},
                                         {"recordId", record_id},
                                         {"deviceId", CONFIG_GATEWAY_DEVICE_ID},
@@ -312,6 +417,7 @@ class MonitorObserver final : public gateway::ProbeObserver {
         const std::string json = message.dump();
         const auto status = publisher_->publish(CONFIG_GATEWAY_MQTT_TOPIC, json.c_str());
         if (status != ESP_OK) {
+            if (historical) publish_failed_ = true;
             ESP_LOGW(kProbeTag, "MQTT publish %s failed: %s", kind, esp_err_to_name(status));
         } else {
             ESP_LOGI(kProbeTag, "MQTT submitted kind=%s recordId=%s", kind, record_id);
@@ -320,6 +426,7 @@ class MonitorObserver final : public gateway::ProbeObserver {
 
     char hex_[517 * 3 + 1]{};
     gateway::MqttPublisher* publisher_ = nullptr;
+    bool publish_failed_ = false;
     gateway::RingJson serializer_;
     gateway::HeartRateHistoryParser hr_history_parser_;
     gateway::HeartRateHistoryRecord hr_history_;
@@ -337,8 +444,7 @@ class MonitorObserver final : public gateway::ProbeObserver {
     std::vector<uint8_t> big_frame_;
 };
 
-void run_probe() {
-    ESP_ERROR_CHECK(nvs_flash_init());
+bool run_probe() {
     uint32_t configured_time = 0;
     const bool time_requested = CONFIG_GATEWAY_PROBE_SET_TIME_UTC[0] != '\0';
     const bool configured_time_valid =
@@ -349,11 +455,12 @@ void run_probe() {
     uint32_t midnight = 0;
     bool clock_valid = false;
     uint32_t synchronized_epoch = 0;
-    static gateway::WifiManager wifi;
-    static gateway::MqttPublisher mqtt;
+    auto& wifi = wifi_manager();
+    auto& mqtt = mqtt_publisher();
     const bool wifi_connected = CONFIG_GATEWAY_WIFI_SSID[0] != '\0' && wifi.connect() == ESP_OK;
     if (!wifi_connected) {
-        ESP_LOGW(kProbeTag, "Wi-Fi unavailable; ring values will not be published");
+        ESP_LOGW(kProbeTag, "Wi-Fi unavailable; retrying before ring sync");
+        return false;
     }
     if (wifi_connected) {
         clock_valid = mqtt.sync_clock() == ESP_OK;
@@ -369,6 +476,7 @@ void run_probe() {
             ESP_LOGW(kProbeTag, "MQTT unavailable: %s", esp_err_to_name(status));
         }
     }
+    if (!mqtt_connected) return false;
     if (mqtt_connected && !clock_valid) {
         synchronized_epoch = static_cast<uint32_t>(std::time(nullptr));
         clock_valid = synchronized_epoch >= 1577836800;
@@ -394,7 +502,8 @@ void run_probe() {
         transport.open(CONFIG_GATEWAY_PROBE_NAME, CONFIG_GATEWAY_PROBE_ADDRESS, 60000);
     if (opened != ESP_OK) {
         ESP_LOGE(kProbeTag, "BLE open failed: %s", esp_err_to_name(opened));
-        return;
+        transport.disconnect();
+        return false;
     }
     const auto subscribed = transport.subscribe();
     ESP_LOGI(kProbeTag, "GATT subscribed=%s command=%u big_data=%u", esp_err_to_name(subscribed),
@@ -449,12 +558,54 @@ void run_probe() {
             nvs_close(handle);
         }
     }
-    runner.run(transport, midnight, date_status == ESP_OK, observer);
+    const auto summary = runner.run(transport, midnight, date_status == ESP_OK, observer);
     transport.disconnect();
-    ESP_LOGI(kProbeTag, "Probe session finished; reset to run again");
+    bool history_ok = date_status == ESP_OK && !observer.publish_failed() &&
+                      summary.lost_notifications == 0;
+    bool history_seen = false;
+    for (const auto& entry : summary.entries) {
+        if (is_hr_history(entry.label) || std::strcmp(entry.label, "hrv") == 0 ||
+            is_big_data_history(entry.label)) {
+            if (entry.result == gateway::ProbeResult::response ||
+                entry.result == gateway::ProbeResult::no_data) history_seen = true;
+            else history_ok = false;
+        }
+    }
+    return history_ok && history_seen;
 }
 } // namespace
 
 extern "C" void app_main(void) {
-    run_probe();
+    ESP_ERROR_CHECK(nvs_flash_init());
+    for (;;) {
+        const std::time_t now = std::time(nullptr);
+        uint32_t last_sync = 0;
+        nvs_handle_t handle;
+        if (nvs_open("m7083_probe", NVS_READWRITE, &handle) == ESP_OK) {
+            nvs_get_u32(handle, "last_sync", &last_sync);
+            nvs_close(handle);
+        }
+        if (now >= 1577836800 && last_sync <= static_cast<uint64_t>(now) &&
+            static_cast<uint64_t>(now) - last_sync < kSyncIntervalSeconds) {
+            if (CONFIG_GATEWAY_WIFI_SSID[0] && wifi_manager().connect() == ESP_OK &&
+                CONFIG_GATEWAY_MQTT_URI[0]) {
+                mqtt_publisher().connect();
+            }
+            vTaskDelay(pdMS_TO_TICKS(kIdleCheckSeconds * 1000));
+            continue;
+        }
+        if (run_probe()) {
+            const uint32_t completed_at = static_cast<uint32_t>(std::time(nullptr));
+            if (nvs_open("m7083_probe", NVS_READWRITE, &handle) == ESP_OK) {
+                if (nvs_set_u32(handle, "last_sync", completed_at) == ESP_OK) {
+                    nvs_commit(handle);
+                }
+                nvs_close(handle);
+            }
+            ESP_LOGI(kProbeTag, "History sync completed; waiting 23 hours");
+        } else {
+            ESP_LOGW(kProbeTag, "History sync incomplete; retrying when ring is nearby");
+            vTaskDelay(pdMS_TO_TICKS(kRetrySeconds * 1000));
+        }
+    }
 }

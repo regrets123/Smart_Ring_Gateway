@@ -4,6 +4,7 @@
 
 #include "esp_log.h"
 #include "esp_netif_sntp.h"
+#include "freertos/task.h"
 #include "sdkconfig.h"
 
 extern const char mqtt_ca_pem_start[] asm("_binary_mqtt_ca_pem_start");
@@ -12,6 +13,7 @@ namespace gateway {
 
 namespace {
 constexpr EventBits_t kConnected = BIT0;
+constexpr EventBits_t kPublished = BIT1;
 constexpr const char* kTag = "mqtt";
 } // namespace
 
@@ -25,6 +27,8 @@ void MqttPublisher::on_event(void* arg, esp_event_base_t, int32_t id, void* data
         xEventGroupClearBits(self.events_, kConnected);
         ESP_LOGW(kTag, "Broker disconnected; client will reconnect");
     } else if (id == MQTT_EVENT_PUBLISHED) {
+        self.acknowledged_id_.store(event->msg_id);
+        xEventGroupSetBits(self.events_, kPublished);
         ESP_LOGI(kTag, "Broker acknowledged message %d (not a database commit)", event->msg_id);
     } else if (id == MQTT_EVENT_ERROR) {
         ESP_LOGW(kTag, "MQTT connection/transport error");
@@ -101,12 +105,23 @@ esp_err_t MqttPublisher::publish(const char* topic, const char* json) {
     if (!(xEventGroupGetBits(events_) & kConnected)) {
         return ESP_ERR_INVALID_STATE;
     }
+    acknowledged_id_.store(-1);
+    xEventGroupClearBits(events_, kPublished);
     const int id = esp_mqtt_client_publish(client_, topic, json, 0, 1, 0);
     if (id < 0) {
         return ESP_FAIL;
     }
-    ESP_LOGI(kTag, "Submitted message %d", id);
-    ESP_LOGI(kTag, "topic is: %s", topic);
+    const TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(10000);
+    while (acknowledged_id_.load() != id) {
+        xEventGroupClearBits(events_, kPublished);
+        if (acknowledged_id_.load() == id) break;
+        const TickType_t now = xTaskGetTickCount();
+        if (now >= deadline ||
+            !(xEventGroupWaitBits(events_, kPublished, pdFALSE, pdFALSE, deadline - now) &
+              kPublished)) {
+            return ESP_ERR_TIMEOUT;
+        }
+    }
     return ESP_OK;
 }
 

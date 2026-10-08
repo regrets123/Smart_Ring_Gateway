@@ -1,8 +1,10 @@
 #pragma once
 
+#include <atomic>
+
 #include "esp_err.h"
-#include "esp_event.h"
-#include "freertos/FreeRTOS.h"
+#include "esp_event_base.h"
+#include "freertos/FreeRTOS.h" // IWYU pragma: keep; required before event_groups.h
 #include "freertos/event_groups.h"
 #include "mqtt_client.h"
 
@@ -20,6 +22,7 @@ private:
     static void on_event(void* arg, esp_event_base_t base, int32_t id, void* data);
     bool sntp_initialized_ = false;
     bool clock_synced_ = false;
+    std::atomic<int> acknowledged_id_{-1};
     esp_mqtt_client_handle_t client_ = nullptr;
     EventGroupHandle_t events_ = nullptr;
 };
