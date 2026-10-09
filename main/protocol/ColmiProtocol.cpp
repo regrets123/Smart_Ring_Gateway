@@ -79,11 +79,6 @@ esp_err_t ColmiProtocol::hr_settings(uint8_t (&out)[16]) {
     return make_command(0x16, payload, sizeof(payload), out);
 }
 
-esp_err_t ColmiProtocol::steps(uint8_t day_offset, uint8_t (&out)[16]) {
-    const uint8_t payload[] = {day_offset, 0x0f, 0, 0x5f, 1};
-    return make_command(0x43, payload, sizeof(payload), out);
-}
-
 esp_err_t ColmiProtocol::hr_history(uint32_t midnight_epoch, uint8_t (&out)[16]) {
     const uint8_t payload[] = {
         static_cast<uint8_t>(midnight_epoch),

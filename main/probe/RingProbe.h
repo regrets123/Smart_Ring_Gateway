@@ -23,7 +23,7 @@ struct ProbeEntry {
 };
 
 struct ProbeSummary {
-    std::array<ProbeEntry, 12> entries{};
+    std::array<ProbeEntry, 10> entries{};
     uint32_t lost_notifications = 0;
 };
 

@@ -62,9 +62,9 @@ idf.py build
 idf.py -p COM_PORT flash monitor
 ```
 
-Replace `COM_PORT` with the ESP32's serial port. To keep the existing mock
-`sdkconfig` untouched, you can use the included probe defaults in a separate
-build directory instead of menuconfig:
+Replace `COM_PORT` with the ESP32's serial port. To keep an existing `sdkconfig`
+untouched, you can use the included probe defaults in a separate build directory
+instead of menuconfig:
 
 ```sh
 idf.py -B build-probe -D SDKCONFIG=sdkconfig.probe -D SDKCONFIG_DEFAULTS=sdkconfig.probe.defaults build
@@ -87,11 +87,11 @@ the same firmware behavior. Each `PROBE RESULT` shows `RESPONSE`, `NO_DATA`,
 `TIMEOUT`, `UNSUPPORTED_CHANNEL`, `TRANSPORT_ERROR`, `SKIPPED_NO_DATE`,
 `SKIPPED_DISCONNECTED`, or `MALFORMED`. `matched=0` means a packet did not
 match the current request; its raw bytes are still printed. The final `PROBE
-SUMMARY` lists all 12 probes and `lost_notifications`. A nonzero lost count
+SUMMARY` lists all 10 probes and `lost_notifications`. A nonzero lost count
 means the transcript omitted that many notification chunks.
 
 The sequence is battery, five standard Device Information reads, HR logging
-settings, steps for offsets 0 and 1, HR history for today and yesterday, paged
+settings, HR history for today and yesterday, paged
 HRV, sleep and SpO₂ Big Data history, then live HR and SpO₂. Each live sensor
 is stopped after at most 30 seconds. The program does not send binding,
 settings, reboot, or power commands. It sets ring time only when the optional
@@ -127,9 +127,9 @@ Stop-Transcript
 ```
 
 Capture from `Scanning exact_name=...` through `PROBE SUMMARY END`, including
-all TX and RX lines. An ESP32 monitor run on the user's ring is required to
-establish which queries this M7083 actually answers. The battery result from
-Python alone does not validate the other commands or their payload meanings.
+all TX and RX lines. Compare monitor captures from the ring with decoded results
+when checking which queries it answers. The battery result from Python alone
+does not validate the other commands or their payload meanings.
 
 Protocol reference: [openring PROTOCOL.md](https://github.com/robinojw/openring/blob/main/PROTOCOL.md)
 and [tahnok/colmi_r02_client](https://github.com/tahnok/colmi_r02_client).

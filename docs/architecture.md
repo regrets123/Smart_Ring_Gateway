@@ -1,102 +1,28 @@
-# Smart Ring Gateway: ESP32 architecture
+# Smart Ring Gateway architecture
 
-Status: initial design with mock publishing implemented. Real BLE decoding is
-still stubbed. Hardware publishing to the existing broker remains to be verified.
-
-## Repository boundary
-
-This repository contains the ESP32-C3 gateway firmware. Its responsibility ends
-at publishing JSON to the existing MQTT broker.
-
-| Part | Location / responsibility |
-| --- | --- |
-| Gateway | This repository: BLE communication, decoding, data types, JSON, Wi-Fi, MQTT publishing |
-| MQTT infrastructure | Existing Mosquitto server and webhook, configured separately |
-| Storage backend | Future separate repository: MQTT subscriber and SQLite on the Raspberry Pi |
-
-The current setup has one user, one owned COLMI R09 ring, one ESP32-C3 Super Mini,
-and an existing Mosquitto server on the home network. Keep device, gateway, and
-user identities separate so additional devices/users can be supported later.
-The second device is undecided; its integration is future work.
-
-## Data flow
+The ESP32-C3 gateway reads the M7083 ring over BLE and publishes decoded readings to MQTT. The Raspberry Pi subscriber in the separate `Smart_Ring_Subs` project validates each message, stores it in SQLite, and serves stored readings through an authenticated HTTPS API. The ring-to-API chain has been verified with real hardware.
 
 ```mermaid
 flowchart LR
-    R[COLMI R09] -->|BLE| B
-    subgraph G[This repository: ESP32 gateway]
-        B[BLE client] --> P[Protocol / ring parsers]
-        P --> D[RingData]
-        D --> J[RingJson serializer]
-        X[Temporary MockReading] --> J
-        J --> W[Wi-Fi / MQTT publisher]
-    end
-    W --> M[Existing Mosquitto broker]
-    M --> H[Existing webhook]
-    M -.-> S[Future subscriber / SQLite: separate repository]
+    R[M7083 ring] -->|BLE| B[ESP32-C3 gateway]
+    B -->|JSON / MQTT over TLS| M[Mosquitto broker]
+    M --> S[Pi subscriber]
+    S --> D[(SQLite)]
+    D --> A[HTTPS API]
 ```
 
-For now, the source is `MockReading`, bypassing BLE and the ring parsers. The
-mock type lives in `main/models/MockData.h`; real reading placeholders stay in
-`main/models/RingData.h`. The publisher sends a version 1 heart-rate record with
-`recordId`, `observedAt`, and `data.bpm`. Configure the existing
-infrastructure to receive it using [the MQTT publishing instructions](mqtt-publishing.md).
+## Gateway flow
 
-## Firmware responsibilities
+`main/ble` discovers the configured ring by exact advertised name, optionally filters by BLE address, connects to its GATT services, and receives notifications. `main/protocol` handles COLMI commands and packet decoding; `main/probe` runs the query session. Decoded values use the types in `main/models/RingData.h`, and `main/serialization/RingJson.*` builds each reading's `data` object. `main/main.cpp` adds the version 1 message envelope and publishes through `main/network`.
 
-| Component | Responsibility |
-| --- | --- |
-| `main/main.cpp` | Configure and connect the gateway, then publish the mock reading periodically |
-| `main/ble` | Discover/connect to the ring, write GATT commands, receive notifications |
-| `main/protocol` | Check/decode packets and produce reading types |
-| `main/models` | Decoded data and identity values; current mock has a heart-rate value |
-| `main/serialization` | Convert data into JSON using `nlohmann/json` |
-| `main/network` | Connect to Wi-Fi and publish to the configured MQTT broker |
+The gateway synchronizes its clock and connects to Wi-Fi and MQTT before scanning because it has no durable offline queue. A complete history session schedules the next sync for 23 hours later; the last successful sync time is saved in NVS. An incomplete session retries after 10 seconds. Each session queries battery, device information, heart-rate history, HRV history, sleep, SpO₂ history, and live heart rate and SpO₂.
 
-Keep COLMI commands, GATT UUIDs, and packet layouts inside the protocol integration.
-Keep JSON conversion out of the BLE client and parsers. Preserve source device
-identity rather than assuming the gateway always has one device or one owner.
-Use separate state for each device when support for another device is added.
+The gateway publishes one JSON record per MQTT message on the configured topic (`gateway/readings` by default), with QoS 1 and no retention. Supported `kind` values are `heartRate`, `spo2`, `heartRateHistory`, `hrvHistory`, `spo2History`, and `sleep`. History from a multi-day response is published one day or night per message. The example envelopes are in [payloadExample.json](../main/models/payloadExample.json); the validation and storage rules are in the subscriber's `docs/message-contract.md`.
 
-The BLE stub accepts a registered device ID and a notification callback with
-caller context. The protocol decoder exposes a `DecodedColmiPacket` output
-placeholder.
-These operations still return `ESP_ERR_NOT_SUPPORTED`; packet fields and BLE peer
-mapping will follow discovery. Callers must check for `ESP_OK` before using outputs.
+Live records get a new 32-character ID for each measurement. Historical records get a stable 16-character ID derived from device ID, kind, and measurement day so later syncs can update that day's record. `observedAt` is the gateway's publish time, including for history. Ring history dates are anchored to the gateway's probe date; they are not independently verified ring timestamps.
 
-## BLE discovery and the real upload format
+## Delivery boundary
 
-Compare the protocol references in the README with captures from the actual R09.
-Confirm supported readings, notification/history layouts, fragmentation, timestamp
-semantics, history retention, and how to recognize the registered ring reliably.
+A gateway MQTT acknowledgement confirms delivery to the broker, not storage in SQLite. The subscriber acknowledges a valid MQTT message after its database transaction and treats identical record IDs as duplicates; changed historical records can replace earlier versions. There is no gateway flash queue or database-level acknowledgement, so an outage can still lose readings. The subscriber currently validates payload structure but does not verify the claimed device, gateway, and user relationship.
 
-The real JSON contract waits until this data is understood. The mock heart-rate
-record is a temporary publishing test.
-Measurement fields, record shapes, batching, and duplicate identity remain undecided.
-Future backend ownership checks belong to the separate subscriber project.
-
-## Connectivity and delivery
-
-The ESP32 connects through the home Wi-Fi network to the existing broker; it does
-not need a BLE link to the Pi. Measure ring-to-gateway BLE range and Wi-Fi access
-separately. A brief hallway visit may not be long enough for a complete ring sync;
-verify this against actual history transfer time and retention.
-
-The current mock uses MQTT QoS 1 without retention. It retries connection failures
-on the next publish cycle. A broker acknowledgement confirms MQTT delivery to the
-broker, not webhook processing or database storage. The gateway currently has no
-durable offline queue or application commit-acknowledgement subscription.
-
-Match broker URI, credentials, TLS trust, and topic permissions to the existing
-Mosquitto deployment. Broker/webhook deployment is managed outside this repository.
-
-## Next steps
-
-1. Configure the ESP32 for the existing broker and allow its publish topic.
-2. Flash the gateway and confirm the mock payload arrives through the existing webhook.
-3. Capture and decode actual BLE data, then define the real reading/upload formats.
-4. Replace the mock source with decoded readings while retaining device identity.
-
-Later, create a separate MQTT subscriber/SQLite repository for the Raspberry Pi.
-The 20-year archive goal, capacity measurement, REST access, and cloud backup
-planning belong there. Investigate cloud backup after daily rolling data is working.
+Configuration and capture instructions for the gateway are in [the M7083 guide](m7083-probe.md). The broker and Raspberry Pi service are configured outside this repository.

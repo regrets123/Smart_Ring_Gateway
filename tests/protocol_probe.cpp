@@ -28,16 +28,6 @@ int test_command_packets() {
         return 2;
     }
 
-    const uint8_t steps[16] = {0x43, 0, 0x0f, 0, 0x5f, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xb2};
-    if (gateway::ColmiProtocol::steps(0, packet) != ESP_OK || !equals(packet, steps, 16)) {
-        return 3;
-    }
-
-    const uint8_t overflow[16] = {0x43, 0xff, 0x0f, 0, 0x5f, 0x01, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xb1};
-    if (gateway::ColmiProtocol::steps(0xff, packet) != ESP_OK || !equals(packet, overflow, 16)) {
-        return 4;
-    }
-
     const uint8_t hr_history[16] = {0x15, 0x78, 0x56, 0x34, 0x12, 0, 0, 0,
                                     0,    0,    0,    0,    0,    0, 0, 0x29};
     if (gateway::ColmiProtocol::hr_history(0x12345678, packet) != ESP_OK ||
@@ -216,7 +206,7 @@ struct FakeTransport : gateway::IRingTransport {
                 enqueue(c, unrelated, 16);
             }
             uint8_t packet[16]{};
-            if (no_data && (p[0] == 0x43 || p[0] == 0x15 || p[0] == 0x39)) {
+            if (no_data && (p[0] == 0x15 || p[0] == 0x39)) {
                 const uint8_t marker[] = {0xff};
                 gateway::ColmiProtocol::make_command(p[0], marker, 1, packet);
             } else if (p[0] == 0x39 && p[1] == 0) {
@@ -229,7 +219,7 @@ struct FakeTransport : gateway::IRingTransport {
                 packet[15] ^= 1;
             }
             enqueue(c, packet, 16);
-            if (p[0] == 0x43 || p[0] == 0x15) {
+            if (p[0] == 0x15) {
                 enqueue(c, packet, 16);
             }
             if (p[0] == 0x69 && disconnect_on_live) {
@@ -286,16 +276,16 @@ int test_session() {
         summary.entries[3].packets != 2 || observer.unmatched < 1) {
         return 40;
     }
-    if (summary.entries[8].result != gateway::ProbeResult::response ||
-        summary.entries[8].bytes != 9 || summary.lost_notifications != 2 ||
-        summary.entries[7].result != gateway::ProbeResult::response ||
-        summary.entries[7].packets != 6) {
+    if (summary.entries[6].result != gateway::ProbeResult::response ||
+        summary.entries[6].bytes != 9 || summary.lost_notifications != 2 ||
+        summary.entries[5].result != gateway::ProbeResult::response ||
+        summary.entries[5].packets != 6) {
         return 41;
     }
-    if (observer.info_count != 5 || observer.results != 12) {
+    if (observer.info_count != 5 || observer.results != 10) {
         return 42;
     }
-    if (transport.writes.size() < 12) {
+    if (transport.writes.size() < 10) {
         return 43;
     }
 
@@ -304,9 +294,9 @@ int test_session() {
     missing.queue_responses = false;
     FakeObserver second;
     const auto partial = probe.run(missing, 0, false, second);
-    if (partial.entries[5].result != gateway::ProbeResult::skipped_no_date ||
-        partial.entries[8].result != gateway::ProbeResult::unsupported_channel ||
-        partial.entries[9].result != gateway::ProbeResult::unsupported_channel ||
+    if (partial.entries[3].result != gateway::ProbeResult::skipped_no_date ||
+        partial.entries[6].result != gateway::ProbeResult::unsupported_channel ||
+        partial.entries[7].result != gateway::ProbeResult::unsupported_channel ||
         partial.entries[0].result != gateway::ProbeResult::timeout) {
         return 44;
     }
@@ -315,8 +305,8 @@ int test_session() {
     drop.disconnect_on_live = true;
     FakeObserver third;
     const auto lost = probe.run(drop, 0, false, third);
-    if (lost.entries[10].result != gateway::ProbeResult::skipped_disconnected ||
-        lost.entries[11].result != gateway::ProbeResult::skipped_disconnected) {
+    if (lost.entries[8].result != gateway::ProbeResult::skipped_disconnected ||
+        lost.entries[9].result != gateway::ProbeResult::skipped_disconnected) {
         return 45;
     }
     FakeTransport empty;
@@ -324,8 +314,8 @@ int test_session() {
     FakeObserver fourth;
     const auto none = probe.run(empty, 0x69000000, true, fourth);
     if (none.entries[3].result != gateway::ProbeResult::no_data ||
-        none.entries[5].result != gateway::ProbeResult::no_data ||
-        none.entries[7].result != gateway::ProbeResult::no_data) {
+        none.entries[4].result != gateway::ProbeResult::no_data ||
+        none.entries[5].result != gateway::ProbeResult::no_data) {
         return 46;
     }
     FakeTransport malformed;
@@ -334,7 +324,7 @@ int test_session() {
     FakeObserver fifth;
     const auto bad = probe.run(malformed, 0, false, fifth);
     if (bad.entries[0].result != gateway::ProbeResult::malformed ||
-        bad.entries[8].result != gateway::ProbeResult::malformed) {
+        bad.entries[6].result != gateway::ProbeResult::malformed) {
         return 47;
     }
     return 0;

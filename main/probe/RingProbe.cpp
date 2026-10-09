@@ -292,9 +292,9 @@ ProbeEntry RingProbe::set_time(IRingTransport& transport, uint32_t utc_epoch,
 ProbeSummary RingProbe::run(IRingTransport& transport, uint32_t today_midnight_epoch, bool has_date,
                             ProbeObserver& observer) {
     ProbeSummary summary;
-    const char* labels[] = {"battery",         "device_info",  "hr_settings",  "steps_today",
-                            "steps_yesterday", "hr_today",     "hr_yesterday", "hrv",
-                            "sleep",           "spo2_history", "live_hr",      "live_spo2"};
+    const char* labels[] = {"battery", "device_info", "hr_settings", "hr_today",
+                            "hr_yesterday", "hrv", "sleep", "spo2_history",
+                            "live_hr", "live_spo2"};
     for (size_t i = 0; i < summary.entries.size(); ++i) {
         summary.entries[i].label = labels[i];
     }
@@ -324,21 +324,16 @@ ProbeSummary RingProbe::run(IRingTransport& transport, uint32_t today_midnight_e
             break;
         case 3:
         case 4:
-            ColmiProtocol::steps(static_cast<uint8_t>(i - 3), request);
-            record(i, command(transport, observer, labels[i], request, true));
-            break;
-        case 5:
-        case 6:
-            if (!has_date || (i == 6 && today_midnight_epoch < 86400)) {
+            if (!has_date || (i == 4 && today_midnight_epoch < 86400)) {
                 ProbeEntry entry{labels[i]};
                 entry.result = ProbeResult::skipped_no_date;
                 record(i, entry);
             } else {
-                ColmiProtocol::hr_history(today_midnight_epoch - (i == 6 ? 86400 : 0), request);
+                ColmiProtocol::hr_history(today_midnight_epoch - (i == 4 ? 86400 : 0), request);
                 record(i, command(transport, observer, labels[i], request, true));
             }
             break;
-        case 7:
+        case 5:
             ColmiProtocol::hrv_page(0, request);
             {
                 uint8_t header[16]{};
@@ -372,13 +367,13 @@ ProbeSummary RingProbe::run(IRingTransport& transport, uint32_t today_midnight_e
                 record(i, hrv);
             }
             break;
+        case 6:
+        case 7:
+            record(i, big_data(transport, observer, labels[i], i == 6 ? 0x27 : 0x2a));
+            break;
         case 8:
         case 9:
-            record(i, big_data(transport, observer, labels[i], i == 8 ? 0x27 : 0x2a));
-            break;
-        case 10:
-        case 11:
-            ColmiProtocol::live_start(i == 10 ? 1 : 3, request);
+            ColmiProtocol::live_start(i == 8 ? 1 : 3, request);
             record(i, command(transport, observer, labels[i], request, true, true));
             break;
         }

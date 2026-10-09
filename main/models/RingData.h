@@ -76,8 +76,4 @@ struct SleepRecord {
     // Retained while the M7083 field layout is checked against real captures.
     std::vector<uint8_t> raw_payload;
 };
-struct StepsReading {
-    int steps;
-};
-
 }  // namespace gateway

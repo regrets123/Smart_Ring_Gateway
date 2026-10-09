@@ -280,9 +280,4 @@ namespace gateway
         }
         return reading.nights.empty() ? ESP_ERR_NOT_FOUND : ESP_OK;
     }
-    esp_err_t StepsParser::parse(const uint8_t *, size_t, StepsReading &)
-    {
-        return ESP_ERR_NOT_SUPPORTED;
-    }
-
 } // namespace gateway

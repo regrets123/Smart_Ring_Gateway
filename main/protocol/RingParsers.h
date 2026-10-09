@@ -59,9 +59,4 @@ public:
     esp_err_t parse(const uint8_t* bytes, size_t length, SleepRecord& record);
 };
 
-class StepsParser {
-public:
-    esp_err_t parse(const uint8_t* bytes, size_t length, StepsReading& reading);
-};
-
 }  // namespace gateway

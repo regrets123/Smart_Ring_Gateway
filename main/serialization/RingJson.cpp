@@ -137,9 +137,4 @@ esp_err_t RingJson::serialize(const SleepRecord& record, std::string& json) {
     return ESP_OK;
 }
 
-esp_err_t RingJson::serialize(const StepsReading&, std::string& json) {
-    json.clear();
-    return ESP_ERR_NOT_SUPPORTED;
-}
-
 } // namespace gateway
