@@ -21,6 +21,10 @@ idf.py set-target esp32c3
 idf.py menuconfig
 ```
 
+Set **Component config → ESP System Settings → Main task stack size** to `8192`
+bytes. Under **Partition Table → Partition Table**, select **Single factory app
+(large), no OTA**. These settings are required for this firmware to build.
+
 Under **Smart Ring Gateway**, set **Exact ring advertised name** to `M7083_7904` or the exact full
 name shown by your ring. The optional address accepts
 `31:35:45:31:79:04` for the ring in the Python capture; leave it empty if the
@@ -63,10 +67,11 @@ idf.py -p COM_PORT flash monitor
 ```
 
 Replace `COM_PORT` with the ESP32's serial port. To keep an existing `sdkconfig`
-untouched, you can use the included probe defaults in a separate build directory
-instead of menuconfig:
+untouched, use a separate probe configuration. On a fresh configuration, run
+menuconfig first and set the same stack and partition options:
 
 ```sh
+idf.py -B build-probe -D SDKCONFIG=sdkconfig.probe -D SDKCONFIG_DEFAULTS=sdkconfig.probe.defaults menuconfig
 idf.py -B build-probe -D SDKCONFIG=sdkconfig.probe -D SDKCONFIG_DEFAULTS=sdkconfig.probe.defaults build
 idf.py -B build-probe -D SDKCONFIG=sdkconfig.probe -p COM_PORT flash monitor
 ```

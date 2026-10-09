@@ -53,7 +53,13 @@ From an ESP-IDF terminal:
 
 ```sh
 idf.py set-target esp32c3
+idf.py menuconfig
 idf.py build
 ```
+
+In menuconfig, set **Component config → ESP System Settings → Main task stack size**
+to `8192` bytes. Under **Partition Table → Partition Table**, select
+**Single factory app (large), no OTA**. The default main stack and app partition
+are too small for this firmware.
 
 The connected ESP32-C3 Super Mini reports 4 MB of flash.
