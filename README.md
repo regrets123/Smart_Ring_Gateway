@@ -41,7 +41,7 @@ Replace `COM_PORT` with the board's serial port. Close the ring's phone app so t
 
 ## Verify the data flow
 
-The serial monitor shows the Wi-Fi IP address, clock and broker connection, BLE query results, a per-query `PROBE SUMMARY`, submitted records, and broker acknowledgements. `PROBE SUMMARY lost_notifications` is a simple monitoring measure for BLE reception; per-query packet counts and the subscriber's stored/updated/duplicate/rejected logs provide further visibility. The gateway acknowledgement confirms delivery to the broker, not a SQLite commit.
+The serial monitor shows the Wi-Fi IP address, clock and broker connection, BLE query results, a per-query `PROBE SUMMARY`, submitted records, and broker acknowledgements. `PROBE SUMMARY lost_notifications` is a simple monitoring measure for BLE reception; per-query packet counts and the subscriber's stored/updated/duplicate/rejected logs provide further visibility. `Stored in database` appears only after the Pi publishes a receipt following its SQLite commit; the broker acknowledgement alone confirms delivery only.
 
 For an end-to-end check, find a published `recordId` in the gateway log, check that the subscriber logged storage, then retrieve the same ID through `GET /readings`. The [API guide](docs/api.md) gives the authenticated request and response format. No secrets need to be printed in the monitor or committed to the repository.
 
@@ -59,7 +59,7 @@ For an end-to-end check, find a published `recordId` in the gateway log, check t
 
 ## Known limitations
 
-The gateway has no durable offline queue and receives no database-level acknowledgement. A broker acknowledgement alone does not guarantee that SQLite stored the reading. Ring history dates are inferred from the gateway's probe date rather than independently verified ring timestamps. The BLE ring link is not encrypted by this firmware. The subscriber validates message structure but does not verify whether the claimed device, gateway, and user belong together. See the [architecture](docs/arkitektur.md) and [security analysis](docs/sakerhet.md) for the consequences.
+The gateway has no durable offline queue. Each publish waits for a database receipt from the Pi, but a record lost while the gateway is offline is not replayed. Ring history dates are inferred from the gateway's probe date rather than independently verified ring timestamps. The BLE ring link is not encrypted by this firmware. The subscriber validates message structure but does not verify whether the claimed device, gateway, and user belong together. See the [architecture](docs/arkitektur.md) and [security analysis](docs/sakerhet.md) for the consequences.
 
 ## Protocol references
 

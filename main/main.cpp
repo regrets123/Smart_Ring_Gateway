@@ -428,12 +428,12 @@ class MonitorObserver final : public gateway::ProbeObserver {
                                         {"observedAt", observed_at},
                                         {"data", nlohmann::json::parse(data)}};
         const std::string json = message.dump();
-        const auto status = publisher_->publish(CONFIG_GATEWAY_MQTT_TOPIC, json.c_str());
+        const auto status = publisher_->publish(CONFIG_GATEWAY_MQTT_TOPIC, json.c_str(), record_id);
         if (status != ESP_OK) {
             if (historical) publish_failed_ = true;
             ESP_LOGW(kProbeTag, "MQTT publish %s failed: %s", kind, esp_err_to_name(status));
         } else {
-            ESP_LOGI(kProbeTag, "MQTT submitted kind=%s recordId=%s", kind, record_id);
+            ESP_LOGI(kProbeTag, "Stored in database kind=%s recordId=%s", kind, record_id);
         }
     }
 

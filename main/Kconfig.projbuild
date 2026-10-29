@@ -43,6 +43,14 @@ config GATEWAY_MQTT_TOPIC
     string "MQTT publish topic"
     default "gateway/readings"
 
+config GATEWAY_MQTT_RECEIPT_TOPIC
+    string "MQTT receipt topic prefix"
+    default "gateway/receipts"
+    help
+        The Pi publishes a database receipt to <prefix>/<gateway ID> after it
+        commits (or rejects) a record. Must match the subscriber's
+        --receipt-topic.
+
 config GATEWAY_DEVICE_ID
     string "Device ID"
     default "ring-01"

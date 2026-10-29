@@ -5,7 +5,7 @@ This guide uses the ESP32 serial monitor, Raspberry Pi subscriber logs, and the 
 ## Follow a reading through the system
 
 1. In the ESP32 serial monitor, look for a Wi-Fi IP address, `Clock synchronized`, `Broker connected`, BLE `PROBE RESULT` lines, and `PROBE SUMMARY`. `lost_notifications` and packet counts show whether BLE reception completed.
-2. Find `MQTT submitted kind=... recordId=...` followed by `Broker acknowledged message ...`. An acknowledgement confirms broker delivery only.
+2. Find `Broker acknowledged message ...` followed by `Database receipt for <recordId>: stored` and `Stored in database kind=... recordId=...`. `No database receipt for ...` means the broker accepted the message but the Pi did not confirm a commit.
 3. In the subscriber log, look for `Subscribed to gateway/readings` and `Message stored`, `Message updated`, `Message duplicate`, or `Rejected message`. A database error is logged separately and leaves the MQTT message unacknowledged.
 4. Call `GET /readings` as described in [api.md](api.md), then look for the same `recordId` in the returned `message`. This verifies storage and API access together.
 
@@ -15,7 +15,7 @@ This guide uses the ESP32 serial monitor, Raspberry Pi subscriber logs, and the 
 | Clock unavailable | Wi-Fi and access to the SNTP server; TLS startup waits for a usable clock. |
 | MQTT unavailable or publish timeout | Broker URI, hostname, port `8883`, CA certificate, credentials, topic, and broker logs. A publish waits up to 10 seconds for acknowledgement. |
 | Ring not found or incomplete probe | Ring advertisement, exact name/address filter, phone app connection, BLE packet/checksum logs, and `lost_notifications`. An incomplete history sync retries after 10 seconds. |
-| Broker acknowledged but no API record | Subscriber subscription and storage logs, topic match, payload validation, and database access. Broker acknowledgement is not a database commit. |
+| Broker acknowledged but no API record | Subscriber subscription and storage logs, topic match, payload validation, and database access. If the gateway logs `Database receipt ... stored` but the API lacks the record, check the API database path. If it logs `No database receipt`, check the subscriber and the receipt topic ACL. |
 | HTTPS client fails | API process, port `8080`, certificate hostname and trust, token file, then HTTP status if a response arrives. |
 
 ## Fault 1: Incorrect API token file

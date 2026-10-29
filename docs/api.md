@@ -4,7 +4,7 @@ The ESP32-C3 gateway publishes JSON records to MQTT. The separate [Smart Ring Su
 
 ## MQTT message
 
-The gateway publishes one record per message to `gateway/readings` by default, using MQTT over TLS on port `8883`, QoS 1, and no retained message. The broker URI and topic are configurable. The subscriber must subscribe to the same topic. A broker acknowledgement means the broker accepted the publish; it does not confirm database storage.
+The gateway publishes one record per message to `gateway/readings` by default, using MQTT over TLS on port `8883`, QoS 1, and no retained message. The broker URI and topic are configurable. The subscriber must subscribe to the same topic. A broker acknowledgement means the broker accepted the publish; it does not confirm database storage. The Pi confirms that separately with a receipt on `gateway/receipts/<gateway ID>` (prefix configurable), which the gateway waits for up to 10 seconds.
 
 Example version 1 message (illustrative values):
 

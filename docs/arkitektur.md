@@ -38,6 +38,6 @@ The ESP32 serial monitor logs Wi-Fi connection and disconnect events, clock sync
 
 ## Delivery boundary
 
-A gateway MQTT acknowledgement confirms delivery to the broker, not storage in SQLite. The subscriber acknowledges a valid MQTT message after its database transaction and treats identical record IDs as duplicates; changed historical records can replace earlier versions. There is no gateway flash queue or database-level acknowledgement, so an outage can still lose readings. The subscriber currently validates payload structure but does not verify the claimed device, gateway, and user relationship.
+A gateway MQTT acknowledgement confirms delivery to the broker, not storage in SQLite. The subscriber acknowledges a valid MQTT message after its database transaction and treats identical record IDs as duplicates; changed historical records can replace earlier versions. The subscriber then publishes a receipt (`stored`, `updated`, `duplicate`, or `rejected`) to `gateway/receipts/<gateway ID>`, and the gateway treats a publish as complete only when the matching receipt arrives within 10 seconds. There is no gateway flash queue, so an outage can still lose live readings. The subscriber currently validates payload structure but does not verify the claimed device, gateway, and user relationship.
 
 Configuration and capture instructions for the gateway are in [the M7083 guide](m7083-probe.md). The broker and Raspberry Pi service are configured outside this repository.
