@@ -33,7 +33,10 @@ connect; close QRing before running the probe.
 
 Leave the UTC **probe date** empty for continuous operation. The gateway uses
 SNTP to date history; a configured date would remain fixed across sessions.
-The probe never sets the ring clock unless the one-shot UTC time option is set.
+When the gateway clock is valid, every sync sets the ring clock from SNTP before
+it asks for data. The ring cannot report its clock, so it cannot be checked first,
+and it may lose it when the battery dies. The one-shot UTC time option still
+exists for setting a specific time without SNTP.
 
 Historical `recordId` values are stable for a device, reading kind, and
 measurement day. HRV, sleep, and SpO₂ history responses are split into one message per day so
@@ -99,8 +102,8 @@ The sequence is battery, five standard Device Information reads, HR logging
 settings, HR history for today and yesterday, paged
 HRV, sleep and SpO₂ Big Data history, then live HR and SpO₂. Each live sensor
 is stopped after at most 30 seconds. The program does not send binding,
-settings, reboot, or power commands. It sets ring time only when the optional
-one-shot UTC timestamp is configured.
+settings, reboot, or power commands. It sets the ring time at the start of each
+sync when the gateway clock is valid.
 
 For HRV, look for `HRV REQUEST page=0`, followed by `HRV HEADER page=0
 reported_pages=...`. The probe then requests each reported page and prints

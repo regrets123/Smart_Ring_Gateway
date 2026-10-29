@@ -526,6 +526,7 @@ bool run_probe() {
     observer.set_publisher(mqtt_connected ? &mqtt : nullptr);
     observer.set_hrv_day_anchor(date_status == ESP_OK ? midnight : 0);
     gateway::RingProbe runner;
+    bool ring_time_sent = false;
     if (configured_time_valid) {
         nvs_handle_t handle;
         const auto opened_nvs = nvs_open("m7083_probe", NVS_READWRITE, &handle);
@@ -561,6 +562,7 @@ bool run_probe() {
                              static_cast<unsigned>(send_time),
                              clock_valid ? "SNTP" : "configured timestamp");
                     const auto result = runner.set_time(transport, send_time, observer);
+                    ring_time_sent = true;
                     const auto saved_result =
                         nvs_set_u8(handle, "time_result", static_cast<uint8_t>(result.result));
                     if (saved_result == ESP_OK) {
@@ -569,6 +571,18 @@ bool run_probe() {
                 }
             }
             nvs_close(handle);
+        }
+    }
+    // The ring cannot report its clock and may lose it when the battery dies,
+    // so every sync starts by setting it from SNTP. History is dated against it.
+    if (clock_valid && !ring_time_sent) {
+        const uint32_t send_time = static_cast<uint32_t>(std::time(nullptr));
+        ESP_LOGI(kProbeTag, "Setting ring time UTC epoch=%u source=SNTP",
+                 static_cast<unsigned>(send_time));
+        const auto result = runner.set_time(transport, send_time, observer);
+        if (result.result != gateway::ProbeResult::response) {
+            ESP_LOGW(kProbeTag, "Ring time not confirmed: %s",
+                     gateway::probe_result_name(result.result));
         }
     }
     const auto summary = runner.run(transport, midnight, date_status == ESP_OK, observer);
