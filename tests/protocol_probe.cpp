@@ -161,6 +161,9 @@ struct FakeTransport : gateway::IRingTransport {
     bool no_data = false;
     bool bad_battery_checksum = false;
     bool malformed_big_data = false;
+    bool stateful_hr_settings = false;
+    uint8_t hr_enabled = 2;
+    uint8_t hr_interval = 30;
 
     bool has_channel(gateway::RingChannel c) const override {
         return connected && (c == gateway::RingChannel::command || big_data);
@@ -209,6 +212,13 @@ struct FakeTransport : gateway::IRingTransport {
             if (no_data && (p[0] == 0x15 || p[0] == 0x39)) {
                 const uint8_t marker[] = {0xff};
                 gateway::ColmiProtocol::make_command(p[0], marker, 1, packet);
+            } else if (p[0] == 0x16 && stateful_hr_settings) {
+                if (p[1] == 2) {
+                    hr_enabled = p[2];
+                    hr_interval = p[3];
+                }
+                const uint8_t state[] = {p[1], hr_enabled, hr_interval};
+                gateway::ColmiProtocol::make_command(p[0], state, 3, packet);
             } else if (p[0] == 0x39 && p[1] == 0) {
                 const uint8_t header_payload[] = {0, 2};
                 gateway::ColmiProtocol::make_command(p[0], header_payload, 2, packet);
@@ -266,6 +276,56 @@ struct FakeObserver : gateway::ProbeObserver {
     void result(const gateway::ProbeEntry&) override { ++results; }
     void finished(const gateway::ProbeSummary&) override {}
 };
+
+int test_hr_logging() {
+    uint8_t packet[16]{};
+    const uint8_t write_60[16] = {0x16, 0x02, 0x01, 0x3c, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x55};
+    if (gateway::ColmiProtocol::hr_settings_write(true, 60, packet) != ESP_OK ||
+        !equals(packet, write_60, 16)) {
+        return 50;
+    }
+    const uint8_t off_ring[16] = {0x16, 0x01, 0x02, 0x1e, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x37};
+    bool enabled = true;
+    uint8_t interval = 0;
+    if (!gateway::ColmiProtocol::parse_hr_settings(off_ring, 16, enabled, interval) || enabled ||
+        interval != 30) {
+        return 51;
+    }
+    uint8_t bad[16];
+    std::memcpy(bad, off_ring, 16);
+    bad[2] = 0;  // Unknown enable value: report unknown rather than guess.
+    bad[15] = 0x35;
+    if (gateway::ColmiProtocol::parse_hr_settings(bad, 16, enabled, interval)) {
+        return 52;
+    }
+
+    FakeTransport ring;
+    ring.stateful_hr_settings = true;
+    FakeObserver observer;
+    gateway::RingProbe probe;
+    const auto fixed = probe.run(ring, 0x69000000, true, observer, 60);
+    if (!fixed.hr_log_before.known || fixed.hr_log_before.enabled ||
+        fixed.hr_log_before.interval_minutes != 30 || !fixed.hr_log_written ||
+        !fixed.hr_log_after.known || !fixed.hr_log_after.enabled ||
+        fixed.hr_log_after.interval_minutes != 60) {
+        return 53;
+    }
+
+    FakeObserver again_observer;
+    const auto unchanged = probe.run(ring, 0x69000000, true, again_observer, 60);
+    if (unchanged.hr_log_written || !unchanged.hr_log_before.enabled) {
+        return 54;  // Already correct: must not write again.
+    }
+
+    FakeTransport untouched;
+    untouched.stateful_hr_settings = true;
+    FakeObserver third;
+    const auto skipped = probe.run(untouched, 0x69000000, true, third, 0);
+    if (skipped.hr_log_written || untouched.hr_enabled != 2 || untouched.hr_interval != 30) {
+        return 55;  // Interval 0 means leave the ring's setting alone.
+    }
+    return 0;
+}
 
 int test_session() {
     FakeTransport transport;
@@ -365,6 +425,9 @@ int main() {
         return result;
     }
     if (const int result = test_peer_selection()) {
+        return result;
+    }
+    if (const int result = test_hr_logging()) {
         return result;
     }
     if (const int result = test_session()) {

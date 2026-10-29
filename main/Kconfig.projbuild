@@ -16,6 +16,17 @@ config GATEWAY_PROBE_SET_TIME_UTC
     string "One-shot ring clock setting (YYYY-MM-DDTHH:MM:SSZ; leave empty to disable)"
     default ""
 
+config GATEWAY_HR_LOG_INTERVAL_MIN
+    int "Ring heart rate logging interval in minutes (0 = leave the ring alone)"
+    range 0 255
+    default 60
+    help
+        Every sync reads the ring's automatic heart rate logging setting. If it
+        is off, or set to another interval, the gateway turns it on at this
+        interval and reads it back. History (heart rate, HRV, SpO2) is empty
+        while the ring is not logging. 0 never writes the setting. Whether the
+        ring accepts a given interval is checked by the read-back in the log.
+
 config GATEWAY_WIFI_SSID
     string "Wi-Fi SSID"
     default ""

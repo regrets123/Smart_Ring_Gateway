@@ -22,9 +22,19 @@ struct ProbeEntry {
     size_t bytes = 0;
 };
 
+struct HrLogState {
+    bool known = false;
+    bool enabled = false;
+    uint8_t interval_minutes = 0;
+};
+
 struct ProbeSummary {
     std::array<ProbeEntry, 10> entries{};
     uint32_t lost_notifications = 0;
+    HrLogState hr_log_before;
+    HrLogState hr_log_after;
+    bool hr_log_written = false;
+    ProbeResult hr_log_write_result = ProbeResult::timeout;
 };
 
 class ProbeObserver {
@@ -44,8 +54,11 @@ class RingProbe {
 public:
     ProbeEntry set_time(IRingTransport& transport, uint32_t utc_epoch,
                         ProbeObserver& observer);
+    // hr_log_interval_minutes: if nonzero, make sure the ring's automatic heart
+    // rate logging is enabled at this interval, writing the setting if it is not.
     ProbeSummary run(IRingTransport& transport, uint32_t today_midnight_epoch,
-                     bool has_date, ProbeObserver& observer);
+                     bool has_date, ProbeObserver& observer,
+                     uint8_t hr_log_interval_minutes = 0);
 };
 
 const char* probe_result_name(ProbeResult result);

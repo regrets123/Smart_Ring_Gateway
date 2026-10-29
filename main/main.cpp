@@ -585,8 +585,28 @@ bool run_probe() {
                      gateway::probe_result_name(result.result));
         }
     }
-    const auto summary = runner.run(transport, midnight, date_status == ESP_OK, observer);
+    const auto summary = runner.run(transport, midnight, date_status == ESP_OK, observer,
+                                    CONFIG_GATEWAY_HR_LOG_INTERVAL_MIN);
     transport.disconnect();
+    if (summary.hr_log_before.known) {
+        ESP_LOGI(kProbeTag, "Ring HR logging before: %s interval=%u",
+                 summary.hr_log_before.enabled ? "on" : "off",
+                 static_cast<unsigned>(summary.hr_log_before.interval_minutes));
+    } else {
+        ESP_LOGW(kProbeTag, "Ring HR logging setting unreadable; not changed");
+    }
+    if (summary.hr_log_written) {
+        if (summary.hr_log_after.known) {
+            ESP_LOGI(kProbeTag, "Ring HR logging set to %u min (%s); ring now reports: %s interval=%u",
+                     static_cast<unsigned>(CONFIG_GATEWAY_HR_LOG_INTERVAL_MIN),
+                     gateway::probe_result_name(summary.hr_log_write_result),
+                     summary.hr_log_after.enabled ? "on" : "off",
+                     static_cast<unsigned>(summary.hr_log_after.interval_minutes));
+        } else {
+            ESP_LOGW(kProbeTag, "Ring HR logging written (%s) but read-back failed",
+                     gateway::probe_result_name(summary.hr_log_write_result));
+        }
+    }
     bool history_ok = date_status == ESP_OK && !observer.publish_failed() &&
                       summary.lost_notifications == 0;
     bool history_seen = false;

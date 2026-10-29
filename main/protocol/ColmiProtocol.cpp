@@ -79,6 +79,23 @@ esp_err_t ColmiProtocol::hr_settings(uint8_t (&out)[16]) {
     return make_command(0x16, payload, sizeof(payload), out);
 }
 
+esp_err_t ColmiProtocol::hr_settings_write(bool enabled, uint8_t interval_minutes,
+                                           uint8_t (&out)[16]) {
+    const uint8_t payload[] = {2, static_cast<uint8_t>(enabled ? 1 : 2), interval_minutes};
+    return make_command(0x16, payload, sizeof(payload), out);
+}
+
+bool ColmiProtocol::parse_hr_settings(const uint8_t* bytes, size_t length, bool& enabled,
+                                      uint8_t& interval_minutes) {
+    if (validate_notification(bytes, length) != PacketStatus::valid || bytes[0] != 0x16 ||
+        (bytes[1] != 1 && bytes[1] != 2) || (bytes[2] != 1 && bytes[2] != 2)) {
+        return false;
+    }
+    enabled = bytes[2] == 1;
+    interval_minutes = bytes[3];
+    return true;
+}
+
 esp_err_t ColmiProtocol::hr_history(uint32_t midnight_epoch, uint8_t (&out)[16]) {
     const uint8_t payload[] = {
         static_cast<uint8_t>(midnight_epoch),

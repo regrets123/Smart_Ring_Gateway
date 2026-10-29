@@ -290,7 +290,7 @@ ProbeEntry RingProbe::set_time(IRingTransport& transport, uint32_t utc_epoch,
 }
 
 ProbeSummary RingProbe::run(IRingTransport& transport, uint32_t today_midnight_epoch, bool has_date,
-                            ProbeObserver& observer) {
+                            ProbeObserver& observer, uint8_t hr_log_interval_minutes) {
     ProbeSummary summary;
     const char* labels[] = {"battery", "device_info", "hr_settings", "hr_today",
                             "hr_yesterday", "hrv", "sleep", "spo2_history",
@@ -318,10 +318,40 @@ ProbeSummary RingProbe::run(IRingTransport& transport, uint32_t today_midnight_e
         case 1:
             record(i, device_info(transport, observer));
             break;
-        case 2:
+        case 2: {
             ColmiProtocol::hr_settings(request);
-            record(i, command(transport, observer, labels[i], request, false));
+            uint8_t reply[16]{};
+            auto settings = command(transport, observer, labels[i], request, false, false, reply);
+            record(i, settings);
+            if (settings.result == ProbeResult::response) {
+                summary.hr_log_before.known = ColmiProtocol::parse_hr_settings(
+                    reply, sizeof(reply), summary.hr_log_before.enabled,
+                    summary.hr_log_before.interval_minutes);
+            }
+            const auto& before = summary.hr_log_before;
+            if (hr_log_interval_minutes != 0 && before.known &&
+                (!before.enabled || before.interval_minutes != hr_log_interval_minutes) &&
+                ColmiProtocol::hr_settings_write(true, hr_log_interval_minutes, request) ==
+                    ESP_OK) {
+                ProbeEntry written{"hr_settings_write"};
+                written = command(transport, observer, "hr_settings_write", request, false);
+                observer.result(written);
+                summary.hr_log_written = true;
+                summary.hr_log_write_result = written.result;
+                // Read it back so the log shows what the ring actually kept.
+                ColmiProtocol::hr_settings(request);
+                uint8_t again[16]{};
+                const auto check = command(transport, observer, "hr_settings_verify", request,
+                                           false, false, again);
+                observer.result(check);
+                if (check.result == ProbeResult::response) {
+                    summary.hr_log_after.known = ColmiProtocol::parse_hr_settings(
+                        again, sizeof(again), summary.hr_log_after.enabled,
+                        summary.hr_log_after.interval_minutes);
+                }
+            }
             break;
+        }
         case 3:
         case 4:
             if (!has_date || (i == 4 && today_midnight_epoch < 86400)) {

@@ -102,7 +102,13 @@ The sequence is battery, five standard Device Information reads, HR logging
 settings, HR history for today and yesterday, paged
 HRV, sleep and SpO₂ Big Data history, then live HR and SpO₂. Each live sensor
 is stopped after at most 30 seconds. The program does not send binding,
-settings, reboot, or power commands. It sets the ring time at the start of each
+reboot, or power commands. Each sync reads the ring's heart rate logging setting
+(command `0x16`) and, if logging is off or uses another interval than
+`GATEWAY_HR_LOG_INTERVAL_MIN` (default 60 minutes, 0 disables this), writes the
+setting and reads it back; the log shows `Ring HR logging before/set to`. The
+byte layout comes from colmi.puxtril.com/settings, which does not define the
+enable values or the interval unit. The firmware assumes 1 = enabled and
+minutes, which the read-back and the first history data confirm. It sets the ring time at the start of each
 sync when the gateway clock is valid.
 
 For HRV, look for `HRV REQUEST page=0`, followed by `HRV HEADER page=0
